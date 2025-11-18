@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "allowArbitraryExtensions": false,
+    "allowImportingTsExtensions": false,
+    "emitDecoratorMetadata": false,
+    "experimentalDecorators": false,
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "useUnknownInCatchVariables": true
+  },
+  "include": ["src", "tests", "index.ts"],
+  "exclude": ["dist", "node_modules"]
+}
