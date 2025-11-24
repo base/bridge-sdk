@@ -31,13 +31,18 @@
     "cross-chain",
     "defi"
   ],
-  "author": "Base Markets",
+  "author": "Base",
   "license": "MIT",
   "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.5.4"
+    "@types/bun": "1.3.2",
+    "typescript": "5.9.3"
   },
   "peerDependencies": {
-    "typescript": "^5.5.0"
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@solana-program/system": "0.10.0",
+    "@solana/kit": "5.0.0",
+    "viem": "2.39.2"
   }
 }
