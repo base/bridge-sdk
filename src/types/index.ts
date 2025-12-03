@@ -1,21 +1,31 @@
 import type { Address } from "@solana/kit";
+import type { Chain, Address as EvmAddress } from "viem";
 
-export interface BridgeConfig {
-  solRpcUrl: string;
+export interface BaseConfig {
+  rpcUrl: string;
+  bridgeContract: EvmAddress;
+  chain: Chain;
+}
+
+export interface SolanaConfig {
+  rpcUrl: string;
   payerKp: string;
   bridgeProgram: Address;
   relayerProgram: Address;
 }
 
-export interface BridgeExecutionParams {
-  quoteId: string;
-  userAddress: string;
-  dryRun?: boolean;
+export interface BridgeConfig {
+  solana: SolanaConfig;
+  base: BaseConfig;
 }
 
-export interface BridgeExecutionResult {
-  requestId: string;
-  status: "submitted" | "confirmed" | "failed";
-  txHash?: string;
-  error?: string;
+export interface BridgeConfigOverrides {
+  solana?: Partial<SolanaConfig>;
+  base?: Partial<BaseConfig>;
 }
+
+export const MessageType = {
+  Call: 0,
+  Transfer: 1,
+  TransferAndCall: 2,
+} as const;

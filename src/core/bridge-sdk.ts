@@ -1,51 +1,48 @@
-import {
-  type BridgeConfig,
-  type BridgeExecutionParams,
-  type BridgeExecutionResult,
-} from "@/types";
+import { type BridgeConfig, type BridgeConfigOverrides } from "@/types";
 import { DEFAULT_CONFIG } from "@/config/defaults";
-import { createLogger, type Logger } from "@/utils/logger";
+import { SolanaEngine, type BridgeSolOpts } from "./solana-engine";
+import { BaseEngine } from "./base-engine";
+import type { Address } from "@solana/kit";
 
 export interface BridgeSDKOptions {
-  config?: Partial<BridgeConfig>;
-  logger?: Logger;
+  config?: BridgeConfigOverrides;
   solRpcUrl?: string;
 }
 
-const mergeConfig = (overrides?: Partial<BridgeConfig>): BridgeConfig => {
-  if (!overrides) {
-    return DEFAULT_CONFIG;
-  }
-
-  return {
-    ...DEFAULT_CONFIG,
-    ...overrides,
-  };
-};
+const mergeConfig = (overrides?: BridgeConfigOverrides): BridgeConfig => ({
+  solana: {
+    ...DEFAULT_CONFIG.solana,
+    ...(overrides?.solana ?? {}),
+  },
+  base: {
+    ...DEFAULT_CONFIG.base,
+    ...(overrides?.base ?? {}),
+  },
+});
 
 export class BridgeSDK {
   readonly config: BridgeConfig;
-  private readonly logger: Logger;
+  private readonly solanaEngine: SolanaEngine;
+  private readonly baseEngine: BaseEngine;
 
   constructor(options: BridgeSDKOptions = {}) {
     this.config = mergeConfig(options.config);
-    this.logger = options.logger ?? createLogger({ namespace: "sdk" });
+    this.solanaEngine = new SolanaEngine({
+      config: this.config,
+    });
+    this.baseEngine = new BaseEngine({
+      config: this.config,
+    });
   }
 
-  async execute(params: BridgeExecutionParams): Promise<BridgeExecutionResult> {
-    this.logger.info("Execute called - placeholder implementation", {
-      quoteId: params.quoteId,
-      userAddress: params.userAddress,
-      dryRun: params.dryRun ?? false,
-    });
+  async bridgeSol(opts: BridgeSolOpts): Promise<Address> {
+    return await this.solanaEngine.bridgeSol(opts);
+  }
 
-    return {
-      requestId: crypto.randomUUID(),
-      status: params.dryRun ? "submitted" : "confirmed",
-      txHash: params.dryRun
-        ? undefined
-        : `0x${crypto.randomUUID().replace(/-/g, "")}`,
-    };
+  async waitForMessageExecution(outgoingMessagePubkey: Address) {
+    await this.baseEngine.monitorMessageExecution(
+      await this.solanaEngine.getOutgoingMessage(outgoingMessagePubkey)
+    );
   }
 }
 

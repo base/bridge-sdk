@@ -1,5 +1,5 @@
 import { type Address } from "@solana/kit";
-import { IDL } from "../idls/base-relayer.idl";
+import { IDL } from "../interfaces/idls/base-relayer.idl";
 
 type BaseRelayerConstants = typeof IDL.constants;
 type BaseRelayerConstantNames = BaseRelayerConstants[number]["name"];
