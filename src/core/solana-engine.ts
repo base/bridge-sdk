@@ -59,6 +59,7 @@ import {
 import {
   SYSTEM_PROGRAM_ADDRESS,
   TOKEN_2022_PROGRAM_ADDRESS,
+  DEFAULT_RELAY_GAS_LIMIT,
 } from "@/constants";
 
 export interface Logger {
@@ -523,9 +524,13 @@ export class SolanaEngine {
     payer: TransactionSigner
   ) {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
-    const rpcSubscriptions = createSolanaRpcSubscriptions(
-      `wss://${this.config.solana.rpcUrl.replace("https://", "")}`
-    );
+
+    // Use URL API to safely parse the RPC URL
+    const url = new URL(this.config.solana.rpcUrl);
+    // Construct WSS URL: protocol is wss:, host and pathname from rpcUrl
+    const wssUrl = `wss://${url.host}${url.pathname}${url.search}`;
+
+    const rpcSubscriptions = createSolanaRpcSubscriptions(wssUrl);
 
     const sendAndConfirmTx = sendAndConfirmTransactionFactory({
       rpc,
@@ -588,7 +593,7 @@ export class SolanaEngine {
 
         // Arguments
         outgoingMessage: outgoingMessage,
-        gasLimit: 200_000n,
+        gasLimit: DEFAULT_RELAY_GAS_LIMIT,
       },
       { programAddress: this.config.solana.relayerProgram }
     );
