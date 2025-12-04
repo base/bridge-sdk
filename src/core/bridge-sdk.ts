@@ -4,6 +4,7 @@ import {
   SolanaEngine,
   type BridgeSolOpts,
   type BridgeSplOpts,
+  type BridgeWrappedOpts,
 } from "./solana-engine";
 import { BaseEngine } from "./base-engine";
 import type { Address } from "@solana/kit";
@@ -45,6 +46,10 @@ export class BridgeSDK {
 
   async bridgeSpl(opts: BridgeSplOpts): Promise<Address> {
     return await this.solanaEngine.bridgeSpl(opts);
+  }
+
+  async bridgeWrapped(opts: BridgeWrappedOpts): Promise<Address> {
+    return await this.solanaEngine.bridgeWrapped(opts);
   }
 
   async waitForMessageExecution(outgoingMessagePubkey: Address) {

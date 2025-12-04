@@ -4,6 +4,7 @@ import {
   fetchOutgoingMessage,
   getBridgeSolInstruction,
   getBridgeSplInstruction,
+  getBridgeWrappedTokenInstruction,
   type OutgoingMessage,
 } from "@/clients/ts/src/bridge";
 import type { BridgeConfig } from "@/types";
@@ -47,7 +48,6 @@ import {
   fetchMaybeMint,
   fetchMaybeToken,
   findAssociatedTokenPda,
-  TOKEN_PROGRAM_ADDRESS,
   type Mint,
 } from "@solana-program/token";
 
@@ -65,6 +65,13 @@ export interface BridgeSplOpts {
   to: Address;
   mint: string;
   remoteToken: string;
+  amount: number;
+  payForRelay?: boolean;
+}
+
+export interface BridgeWrappedOpts {
+  to: Address;
+  mint: string;
   amount: number;
   payForRelay?: boolean;
 }
@@ -134,27 +141,14 @@ export class SolanaEngine {
 
   async bridgeSpl(opts: BridgeSplOpts): Promise<SolAddress> {
     try {
-      const { rpc, payer, bridge, outgoingMessage, salt } =
+      const { payer, bridge, outgoingMessage, salt } =
         await this.setupMessage();
 
-      const mintAddress = address(opts.mint);
-      console.log(`Mint: ${mintAddress}`);
-
-      const maybeMint = await fetchMaybeMint(rpc, mintAddress);
-      if (!maybeMint.exists) {
-        throw new Error("Mint not found");
-      }
+      const { mint, fromTokenAccount, amount, tokenProgram } =
+        await this.setupSpl(opts, payer);
 
       const remoteTokenBytes = toBytes(opts.remoteToken);
-      const mintBytes = getBase58Encoder().encode(mintAddress);
-
-      // Calculate scaled amount (amount * 10^decimals)
-      const scaledAmount = BigInt(
-        Math.floor(opts.amount * Math.pow(10, maybeMint.data.decimals))
-      );
-      console.log(`Amount: ${opts.amount}`);
-      console.log(`Decimals: ${maybeMint.data.decimals}`);
-      console.log(`Scaled amount: ${scaledAmount}`);
+      const mintBytes = getBase58Encoder().encode(mint);
 
       const [tokenVaultAddress] = await getProgramDerivedAddress({
         programAddress: this.config.solana.bridgeProgram,
@@ -166,14 +160,6 @@ export class SolanaEngine {
       });
       console.log(`Token Vault: ${tokenVaultAddress}`);
 
-      // Resolve from token account
-      const fromTokenAccountAddress = await this.resolveFromTokenAccount(
-        "payer",
-        payer.address,
-        maybeMint
-      );
-      console.log(`From Token Account: ${fromTokenAccountAddress}`);
-
       const ixs: Instruction[] = [
         getBridgeSplInstruction(
           {
@@ -181,19 +167,19 @@ export class SolanaEngine {
             payer,
             from: payer,
             gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
-            mint: mintAddress,
-            fromTokenAccount: fromTokenAccountAddress,
+            mint,
+            fromTokenAccount,
             tokenVault: tokenVaultAddress,
             bridge: bridge.address,
             outgoingMessage,
-            tokenProgram: TOKEN_PROGRAM_ADDRESS,
+            tokenProgram,
             systemProgram: SYSTEM_PROGRAM_ADDRESS,
 
             // Arguments
             outgoingMessageSalt: salt,
             to: toBytes(opts.to),
             remoteToken: remoteTokenBytes,
-            amount: scaledAmount,
+            amount,
             call: null,
           },
           { programAddress: this.config.solana.bridgeProgram }
@@ -208,6 +194,50 @@ export class SolanaEngine {
       );
     } catch (error) {
       console.error("Bridge SPL operation failed:", error);
+      throw error;
+    }
+  }
+
+  async bridgeWrapped(opts: BridgeWrappedOpts): Promise<SolAddress> {
+    try {
+      const { payer, bridge, outgoingMessage, salt } =
+        await this.setupMessage();
+
+      const { mint, fromTokenAccount, amount, tokenProgram } =
+        await this.setupSpl(opts, payer);
+
+      const ixs: Instruction[] = [
+        getBridgeWrappedTokenInstruction(
+          {
+            // Accounts
+            payer,
+            from: payer,
+            gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+            mint,
+            fromTokenAccount,
+            bridge: bridge.address,
+            outgoingMessage,
+            tokenProgram,
+            systemProgram: SYSTEM_PROGRAM_ADDRESS,
+
+            // Arguments
+            outgoingMessageSalt: salt,
+            to: toBytes(opts.to),
+            amount,
+            call: null,
+          },
+          { programAddress: this.config.solana.bridgeProgram }
+        ),
+      ];
+
+      return await this.submitMessage(
+        ixs,
+        outgoingMessage,
+        payer,
+        !!opts.payForRelay
+      );
+    } catch (error) {
+      console.error("Bridge Wrapped Token operation failed:", error);
       throw error;
     }
   }
@@ -231,7 +261,40 @@ export class SolanaEngine {
       await this.outgoingMessagePubkey();
     console.log(`Outgoing message: ${outgoingMessage}`);
 
-    return { rpc, payer, bridge, outgoingMessage, salt };
+    return { payer, bridge, outgoingMessage, salt };
+  }
+
+  private async setupSpl(opts: BridgeWrappedOpts, payer: KeyPairSigner) {
+    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+
+    const mint = address(opts.mint);
+    console.log(`Mint: ${mint}`);
+
+    const maybeMint = await fetchMaybeMint(rpc, mint);
+    if (!maybeMint.exists) {
+      throw new Error("Mint not found");
+    }
+
+    // Calculate scaled amount (amount * 10^decimals)
+    const amount = BigInt(
+      Math.floor(opts.amount * Math.pow(10, maybeMint.data.decimals))
+    );
+    console.log(`Amount: ${opts.amount}`);
+    console.log(`Decimals: ${maybeMint.data.decimals}`);
+    console.log(`Scaled amount: ${amount}`);
+
+    // Resolve from token account
+    const fromTokenAccount = await this.resolveFromTokenAccount(
+      "payer",
+      payer.address,
+      maybeMint
+    );
+    console.log(`From Token Account: ${fromTokenAccount}`);
+
+    const tokenProgram = maybeMint.programAddress;
+    console.log(`Token Program: ${tokenProgram}`);
+
+    return { mint, fromTokenAccount, amount, tokenProgram };
   }
 
   private async submitMessage(
