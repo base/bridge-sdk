@@ -1,6 +1,10 @@
 import { type BridgeConfig, type BridgeConfigOverrides } from "@/types";
 import { DEFAULT_CONFIG } from "@/config/defaults";
-import { SolanaEngine, type BridgeSolOpts } from "./solana-engine";
+import {
+  SolanaEngine,
+  type BridgeSolOpts,
+  type BridgeSplOpts,
+} from "./solana-engine";
 import { BaseEngine } from "./base-engine";
 import type { Address } from "@solana/kit";
 
@@ -37,6 +41,10 @@ export class BridgeSDK {
 
   async bridgeSol(opts: BridgeSolOpts): Promise<Address> {
     return await this.solanaEngine.bridgeSol(opts);
+  }
+
+  async bridgeSpl(opts: BridgeSplOpts): Promise<Address> {
+    return await this.solanaEngine.bridgeSpl(opts);
   }
 
   async waitForMessageExecution(outgoingMessagePubkey: Address) {
