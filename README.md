@@ -1,6 +1,6 @@
 # Bridge SDK
 
-Composable cross-chain bridge SDK scaffolding for Base Markets integrations.
+Composable cross-chain bridge SDK for Base Markets integrations.
 
 ## Getting Started
 
@@ -15,39 +15,73 @@ bun run build
 
 ## Features
 
-- opinionated default config for Base ↔ Ethereum routes
-- light-weight routing engine abstraction with pluggable RPC provider
-- structured logger utility with custom transports
-- Bun-native build/test scripts and TypeScript project references
+- **Solana ↔ Base Bridging**: Seamlessly bridge assets between Solana and Base.
+- **Multiple Bridge Types**:
+  - **Bridge SOL**: Native SOL transfers.
+  - **Bridge SPL**: SPL token transfers.
+  - **Bridge Wrapped**: Wrapped token transfers.
+  - **Bridge Call**: Arbitrary cross-chain contract calls.
+- **Message Relaying**: Built-in support for monitoring and verifying message execution on Base.
+- **Dual Engine Architecture**:
+  - `SolanaEngine`: Handles Solana-side interactions (setup messages, build transactions).
+  - `BaseEngine`: Handles Base-side monitoring and verification.
+- **Bun-native**: Optimized for Bun runtime with fast build and test execution.
 
 ## Project Structure
 
 ```
 src/
-  config/         // default network + token metadata
+  clients/        // Generated clients (Solana/Base)
+  config/         // Default configuration
   constants/      // SDK-wide constants
-  core/           // BridgeSDK + routing engine
-  services/       // RPC provider, transport adapters
-  types/          // shared TypeScript contracts
-  utils/          // logging, helpers
+  core/           // Core logic (BridgeSDK, SolanaEngine, BaseEngine)
+  interfaces/     // ABIs and IDLs
+  types/          // TypeScript type definitions
+  utils/          // Helper functions
+examples/         // Usage examples
 tests/            // bun:test specs
 ```
 
 ## Usage Example
 
+### Bridging SOL from Solana to Base
+
 ```ts
 import { createBridgeSDK } from "@base-markets/bridge-sdk";
 
-const sdk = createBridgeSDK();
+async function main() {
+  // Initialize SDK with optional config
+  // If payerKp is not provided, it will look for standard Solana CLI config
+  const sdk = createBridgeSDK({
+    config: {
+      solana: {
+        payerKp: "path/to/keypair.json",
+      },
+    },
+  });
 
-const quote = await sdk.getQuote({
-  amount: "1",
-  fromChainId: 8453,
-  toChainId: 1,
-  fromTokenAddress: "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
-  toTokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  userAddress: "0x0000000000000000000000000000000000000000",
-});
+  // Bridge 0.001 SOL to an EVM address
+  const outgoingMessage = await sdk.bridgeSol({
+    to: "0x644e3DedB0e4F83Bfcf8F9992964d240224B74dc", // EVM recipient address
+    amount: 0.001,
+    payForRelay: true, // Optional: Pay for relay execution on Base
+  });
 
-console.log(quote);
+  console.log("Bridge transaction sent. Message pubkey:", outgoingMessage);
+
+  // Wait for the message to be executed on Base
+  await sdk.waitForMessageExecution(outgoingMessage);
+  console.log("Message executed on Base!");
+}
+
+main().catch(console.error);
 ```
+
+### Other Examples
+
+Check the `examples/` directory for more usage patterns:
+
+- `examples/bridgeSpl.ts`: Bridging SPL tokens
+- `examples/bridgeWrapped.ts`: Bridging wrapped tokens
+- `examples/bridgeCall.ts`: Making cross-chain contract calls
+- `examples/wrapToken.ts`: Wrapping tokens
