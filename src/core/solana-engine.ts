@@ -1,7 +1,9 @@
 import { existsSync } from "fs";
 import {
+  CallType,
   fetchBridge,
   fetchOutgoingMessage,
+  getBridgeCallInstruction,
   getBridgeSolInstruction,
   getBridgeSplInstruction,
   getBridgeWrappedTokenInstruction,
@@ -35,7 +37,7 @@ import {
   address,
   getBase58Encoder,
 } from "@solana/kit";
-import { toBytes, type Address } from "viem";
+import { toBytes, type Address, type Hex } from "viem";
 import { homedir } from "os";
 import { join } from "path";
 import {
@@ -73,6 +75,13 @@ export interface BridgeWrappedOpts {
   to: Address;
   mint: string;
   amount: number;
+  payForRelay?: boolean;
+}
+
+export interface BridgeCallOpts {
+  to: Address;
+  value: number;
+  data: Hex;
   payForRelay?: boolean;
 }
 
@@ -238,6 +247,53 @@ export class SolanaEngine {
       );
     } catch (error) {
       console.error("Bridge Wrapped Token operation failed:", error);
+      throw error;
+    }
+  }
+
+  async bridgeCall(opts: BridgeCallOpts): Promise<SolAddress> {
+    try {
+      const { payer, bridge, outgoingMessage, salt } =
+        await this.setupMessage();
+
+      // Remove 0x prefix
+      const callData = opts.data.startsWith("0x")
+        ? opts.data.slice(2)
+        : opts.data;
+
+      // Build bridge call instruction
+      const ixs: Instruction[] = [
+        getBridgeCallInstruction(
+          {
+            // Accounts
+            payer,
+            from: payer,
+            gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+            bridge: bridge.address,
+            outgoingMessage,
+            systemProgram: SYSTEM_PROGRAM_ADDRESS,
+
+            // Arguments
+            outgoingMessageSalt: salt,
+            call: {
+              ty: CallType.Call,
+              to: toBytes(opts.to),
+              value: BigInt(Math.floor(opts.value * 1e18)), // Convert ETH to wei
+              data: Buffer.from(callData, "hex"),
+            },
+          },
+          { programAddress: this.config.solana.bridgeProgram }
+        ),
+      ];
+
+      return await this.submitMessage(
+        ixs,
+        outgoingMessage,
+        payer,
+        !!opts.payForRelay
+      );
+    } catch (error) {
+      console.error("Bridge call failed:", error);
       throw error;
     }
   }

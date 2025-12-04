@@ -2,6 +2,7 @@ import { type BridgeConfig, type BridgeConfigOverrides } from "@/types";
 import { DEFAULT_CONFIG } from "@/config/defaults";
 import {
   SolanaEngine,
+  type BridgeCallOpts,
   type BridgeSolOpts,
   type BridgeSplOpts,
   type BridgeWrappedOpts,
@@ -50,6 +51,10 @@ export class BridgeSDK {
 
   async bridgeWrapped(opts: BridgeWrappedOpts): Promise<Address> {
     return await this.solanaEngine.bridgeWrapped(opts);
+  }
+
+  async bridgeCall(opts: BridgeCallOpts): Promise<Address> {
+    return await this.solanaEngine.bridgeCall(opts);
   }
 
   async waitForMessageExecution(outgoingMessagePubkey: Address) {
