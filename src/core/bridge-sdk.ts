@@ -6,6 +6,7 @@ import {
   type BridgeSolOpts,
   type BridgeSplOpts,
   type BridgeWrappedOpts,
+  type WrapTokenOpts,
 } from "./solana-engine";
 import { BaseEngine } from "./base-engine";
 import type { Address } from "@solana/kit";
@@ -55,6 +56,10 @@ export class BridgeSDK {
 
   async bridgeCall(opts: BridgeCallOpts): Promise<Address> {
     return await this.solanaEngine.bridgeCall(opts);
+  }
+
+  async wrapToken(opts: WrapTokenOpts): Promise<Address> {
+    return await this.solanaEngine.wrapToken(opts);
   }
 
   async waitForMessageExecution(outgoingMessagePubkey: Address) {

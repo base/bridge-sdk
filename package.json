@@ -41,7 +41,6 @@
     "typescript": "5.9.3"
   },
   "dependencies": {
-    "@solana-program/system": "0.10.0",
     "@solana-program/token": "0.9.0",
     "@solana/kit": "5.0.0",
     "viem": "2.39.2"

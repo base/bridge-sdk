@@ -7,11 +7,12 @@ import {
   getBridgeSolInstruction,
   getBridgeSplInstruction,
   getBridgeWrappedTokenInstruction,
+  getWrapTokenInstruction,
   type OutgoingMessage,
+  type WrapTokenInstructionDataArgs,
 } from "@/clients/ts/src/bridge";
 import type { BridgeConfig } from "@/types";
 import { getIdlConstant } from "@/utils/bridge-idl.constants";
-import { SYSTEM_PROGRAM_ADDRESS } from "@solana-program/system";
 import {
   addSignersToTransactionMessage,
   appendTransactionMessageInstructions,
@@ -36,8 +37,11 @@ import {
   type Account,
   address,
   getBase58Encoder,
+  getU8Codec,
+  getU64Encoder,
+  Endian,
 } from "@solana/kit";
-import { toBytes, type Address, type Hex } from "viem";
+import { keccak256, toBytes, type Address, type Hex } from "viem";
 import { homedir } from "os";
 import { join } from "path";
 import {
@@ -52,6 +56,10 @@ import {
   findAssociatedTokenPda,
   type Mint,
 } from "@solana-program/token";
+import {
+  SYSTEM_PROGRAM_ADDRESS,
+  TOKEN_2022_PROGRAM_ADDRESS,
+} from "@/constants";
 
 export interface SolanaEngineOpts {
   config: BridgeConfig;
@@ -82,6 +90,15 @@ export interface BridgeCallOpts {
   to: Address;
   value: number;
   data: Hex;
+  payForRelay?: boolean;
+}
+
+export interface WrapTokenOpts {
+  remoteToken: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  scalerExponent: number;
   payForRelay?: boolean;
 }
 
@@ -294,6 +311,90 @@ export class SolanaEngine {
       );
     } catch (error) {
       console.error("Bridge call failed:", error);
+      throw error;
+    }
+  }
+
+  async wrapToken(opts: WrapTokenOpts): Promise<SolAddress> {
+    try {
+      const { payer, bridge, outgoingMessage, salt } =
+        await this.setupMessage();
+
+      // Instruction arguments
+      const instructionArgs: WrapTokenInstructionDataArgs = {
+        outgoingMessageSalt: salt,
+        decimals: opts.decimals,
+        name: opts.name,
+        symbol: opts.symbol,
+        remoteToken: toBytes(opts.remoteToken),
+        scalerExponent: opts.scalerExponent,
+      };
+
+      const encodedName = Buffer.from(instructionArgs.name);
+      const encodedSymbol = Buffer.from(instructionArgs.symbol);
+
+      const nameLengthLeBytes = getU64Encoder({ endian: Endian.Little }).encode(
+        encodedName.length
+      );
+
+      const symbolLengthLeBytes = getU64Encoder({
+        endian: Endian.Little,
+      }).encode(encodedSymbol.length);
+
+      // Calculate metadata hash
+      const metadataHash = keccak256(
+        Buffer.concat([
+          Buffer.from(nameLengthLeBytes),
+          encodedName,
+          Buffer.from(symbolLengthLeBytes),
+          encodedSymbol,
+          Buffer.from(instructionArgs.remoteToken),
+          Buffer.from(getU8Codec().encode(instructionArgs.scalerExponent)),
+        ])
+      );
+
+      const decimalsSeed = Buffer.from(
+        getU8Codec().encode(instructionArgs.decimals)
+      );
+
+      const [mintAddress] = await getProgramDerivedAddress({
+        programAddress: this.config.solana.bridgeProgram,
+        seeds: [
+          Buffer.from(getIdlConstant("WRAPPED_TOKEN_SEED")),
+          decimalsSeed,
+          Buffer.from(toBytes(metadataHash)),
+        ],
+      });
+      console.log(`Mint: ${mintAddress}`);
+
+      // Build wrap token instruction
+      const ixs: Instruction[] = [
+        getWrapTokenInstruction(
+          {
+            // Accounts
+            payer,
+            gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+            mint: mintAddress,
+            bridge: bridge.address,
+            outgoingMessage,
+            tokenProgram: TOKEN_2022_PROGRAM_ADDRESS,
+            systemProgram: SYSTEM_PROGRAM_ADDRESS,
+
+            // Arguments
+            ...instructionArgs,
+          },
+          { programAddress: this.config.solana.bridgeProgram }
+        ),
+      ];
+
+      return await this.submitMessage(
+        ixs,
+        outgoingMessage,
+        payer,
+        !!opts.payForRelay
+      );
+    } catch (error) {
+      console.error("Token wrap failed:", error);
       throw error;
     }
   }
