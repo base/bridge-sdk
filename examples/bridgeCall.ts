@@ -7,7 +7,7 @@ async function main() {
 
   const outgoing = await baseBridgeClient.bridgeCall({
     to: "0x5d3eB988Daa06151b68369cf957e917B4371d35d",
-    value: 0,
+    value: 0n,
     data: "0xd09de08a", // increment()
     payForRelay: true,
   });

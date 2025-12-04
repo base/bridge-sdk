@@ -67,7 +67,7 @@ export interface SolanaEngineOpts {
 
 export interface BridgeSolOpts {
   to: Address;
-  amount: number;
+  amount: bigint;
   payForRelay?: boolean;
 }
 
@@ -75,20 +75,20 @@ export interface BridgeSplOpts {
   to: Address;
   mint: string;
   remoteToken: string;
-  amount: number;
+  amount: bigint;
   payForRelay?: boolean;
 }
 
 export interface BridgeWrappedOpts {
   to: Address;
   mint: string;
-  amount: number;
+  amount: bigint;
   payForRelay?: boolean;
 }
 
 export interface BridgeCallOpts {
   to: Address;
-  value: number;
+  value: bigint;
   data: Hex;
   payForRelay?: boolean;
 }
@@ -126,11 +126,6 @@ export class SolanaEngine {
       const solVaultAddress = await this.solVaultPubkey();
       console.log(`Sol Vault: ${solVaultAddress}`);
 
-      // Calculate scaled amount (amount * 10^decimals)
-      const scaledAmount = BigInt(Math.floor(opts.amount * Math.pow(10, 9)));
-      console.log(`Amount: ${opts.amount}`);
-      console.log(`Scaled amount: ${scaledAmount}`);
-
       const ixs: Instruction[] = [
         getBridgeSolInstruction(
           {
@@ -146,7 +141,7 @@ export class SolanaEngine {
             // Arguments
             outgoingMessageSalt: salt,
             to: toBytes(opts.to),
-            amount: scaledAmount,
+            amount: opts.amount,
             call: null,
           },
           { programAddress: this.config.solana.bridgeProgram }
@@ -170,8 +165,10 @@ export class SolanaEngine {
       const { payer, bridge, outgoingMessage, salt } =
         await this.setupMessage();
 
-      const { mint, fromTokenAccount, amount, tokenProgram } =
-        await this.setupSpl(opts, payer);
+      const { mint, fromTokenAccount, tokenProgram } = await this.setupSpl(
+        opts,
+        payer
+      );
 
       const remoteTokenBytes = toBytes(opts.remoteToken);
       const mintBytes = getBase58Encoder().encode(mint);
@@ -205,7 +202,7 @@ export class SolanaEngine {
             outgoingMessageSalt: salt,
             to: toBytes(opts.to),
             remoteToken: remoteTokenBytes,
-            amount,
+            amount: opts.amount,
             call: null,
           },
           { programAddress: this.config.solana.bridgeProgram }
@@ -229,8 +226,10 @@ export class SolanaEngine {
       const { payer, bridge, outgoingMessage, salt } =
         await this.setupMessage();
 
-      const { mint, fromTokenAccount, amount, tokenProgram } =
-        await this.setupSpl(opts, payer);
+      const { mint, fromTokenAccount, tokenProgram } = await this.setupSpl(
+        opts,
+        payer
+      );
 
       const ixs: Instruction[] = [
         getBridgeWrappedTokenInstruction(
@@ -249,7 +248,7 @@ export class SolanaEngine {
             // Arguments
             outgoingMessageSalt: salt,
             to: toBytes(opts.to),
-            amount,
+            amount: opts.amount,
             call: null,
           },
           { programAddress: this.config.solana.bridgeProgram }
@@ -295,7 +294,7 @@ export class SolanaEngine {
             call: {
               ty: CallType.Call,
               to: toBytes(opts.to),
-              value: BigInt(Math.floor(opts.value * 1e18)), // Convert ETH to wei
+              value: opts.value,
               data: Buffer.from(callData, "hex"),
             },
           },
@@ -432,13 +431,7 @@ export class SolanaEngine {
       throw new Error("Mint not found");
     }
 
-    // Calculate scaled amount (amount * 10^decimals)
-    const amount = BigInt(
-      Math.floor(opts.amount * Math.pow(10, maybeMint.data.decimals))
-    );
-    console.log(`Amount: ${opts.amount}`);
     console.log(`Decimals: ${maybeMint.data.decimals}`);
-    console.log(`Scaled amount: ${amount}`);
 
     // Resolve from token account
     const fromTokenAccount = await this.resolveFromTokenAccount(
@@ -451,7 +444,7 @@ export class SolanaEngine {
     const tokenProgram = maybeMint.programAddress;
     console.log(`Token Program: ${tokenProgram}`);
 
-    return { mint, fromTokenAccount, amount, tokenProgram };
+    return { mint, fromTokenAccount, tokenProgram };
   }
 
   private async submitMessage(
