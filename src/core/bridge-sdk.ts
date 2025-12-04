@@ -7,6 +7,7 @@ import {
   type BridgeSplOpts,
   type BridgeWrappedOpts,
   type WrapTokenOpts,
+  type Logger,
 } from "./solana-engine";
 import { BaseEngine } from "./base-engine";
 import type { Address } from "@solana/kit";
@@ -14,6 +15,7 @@ import type { Address } from "@solana/kit";
 export interface BridgeSDKOptions {
   config?: BridgeConfigOverrides;
   solRpcUrl?: string;
+  logger?: Logger;
 }
 
 const mergeConfig = (overrides?: BridgeConfigOverrides): BridgeConfig => ({
@@ -36,6 +38,7 @@ export class BridgeSDK {
     this.config = mergeConfig(options.config);
     this.solanaEngine = new SolanaEngine({
       config: this.config,
+      logger: options.logger,
     });
     this.baseEngine = new BaseEngine({
       config: this.config,

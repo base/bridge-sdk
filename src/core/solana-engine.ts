@@ -61,8 +61,16 @@ import {
   TOKEN_2022_PROGRAM_ADDRESS,
 } from "@/constants";
 
+export interface Logger {
+  debug(message: string, ...args: any[]): void;
+  info(message: string, ...args: any[]): void;
+  warn(message: string, ...args: any[]): void;
+  error(message: string, ...args: any[]): void;
+}
+
 export interface SolanaEngineOpts {
   config: BridgeConfig;
+  logger?: Logger;
 }
 
 export interface BridgeSolOpts {
@@ -104,11 +112,18 @@ export interface WrapTokenOpts {
 
 export class SolanaEngine {
   private readonly config: BridgeConfig;
+  private readonly logger: Logger;
   private keypairSignerCache = new Map<string, KeyPairSigner>();
   private signer: KeyPairSigner | null = null;
 
   constructor(opts: SolanaEngineOpts) {
     this.config = opts.config;
+    this.logger = opts.logger ?? {
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    };
   }
 
   async getOutgoingMessage(
@@ -119,319 +134,292 @@ export class SolanaEngine {
   }
 
   async bridgeSol(opts: BridgeSolOpts): Promise<SolAddress> {
-    try {
-      const { payer, bridge, outgoingMessage, salt } =
-        await this.setupMessage();
+    const { payer, bridge, outgoingMessage, salt } = await this.setupMessage();
 
-      const solVaultAddress = await this.solVaultPubkey();
-      console.log(`Sol Vault: ${solVaultAddress}`);
+    const solVaultAddress = await this.solVaultPubkey();
+    this.logger.debug(`Sol Vault: ${solVaultAddress}`);
 
-      const ixs: Instruction[] = [
-        getBridgeSolInstruction(
-          {
-            // Accounts
-            payer,
-            from: payer,
-            gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
-            solVault: solVaultAddress,
-            bridge: bridge.address,
-            outgoingMessage,
-            systemProgram: SYSTEM_PROGRAM_ADDRESS,
+    this.logger.debug(`Amount: ${opts.amount}`);
 
-            // Arguments
-            outgoingMessageSalt: salt,
-            to: toBytes(opts.to),
-            amount: opts.amount,
-            call: null,
-          },
-          { programAddress: this.config.solana.bridgeProgram }
-        ),
-      ];
+    const ixs: Instruction[] = [
+      getBridgeSolInstruction(
+        {
+          // Accounts
+          payer,
+          from: payer,
+          gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+          solVault: solVaultAddress,
+          bridge: bridge.address,
+          outgoingMessage,
+          systemProgram: SYSTEM_PROGRAM_ADDRESS,
 
-      return await this.submitMessage(
-        ixs,
-        outgoingMessage,
-        payer,
-        !!opts.payForRelay
-      );
-    } catch (error) {
-      console.error("Bridge SOL operation failed:", { error });
-      throw error;
-    }
+          // Arguments
+          outgoingMessageSalt: salt,
+          to: toBytes(opts.to),
+          amount: opts.amount,
+          call: null,
+        },
+        { programAddress: this.config.solana.bridgeProgram }
+      ),
+    ];
+
+    return await this.submitMessage(
+      ixs,
+      outgoingMessage,
+      payer,
+      !!opts.payForRelay
+    );
   }
 
   async bridgeSpl(opts: BridgeSplOpts): Promise<SolAddress> {
-    try {
-      const { payer, bridge, outgoingMessage, salt } =
-        await this.setupMessage();
+    const { payer, bridge, outgoingMessage, salt } = await this.setupMessage();
 
-      const { mint, fromTokenAccount, tokenProgram } = await this.setupSpl(
-        opts,
-        payer
-      );
+    const { mint, fromTokenAccount, amount, tokenProgram } =
+      await this.setupSpl(opts, payer);
 
-      const remoteTokenBytes = toBytes(opts.remoteToken);
-      const mintBytes = getBase58Encoder().encode(mint);
+    const remoteTokenBytes = toBytes(opts.remoteToken);
+    const mintBytes = getBase58Encoder().encode(mint);
 
-      const [tokenVaultAddress] = await getProgramDerivedAddress({
-        programAddress: this.config.solana.bridgeProgram,
-        seeds: [
-          Buffer.from(getIdlConstant("TOKEN_VAULT_SEED")),
-          mintBytes,
-          Buffer.from(remoteTokenBytes),
-        ],
-      });
-      console.log(`Token Vault: ${tokenVaultAddress}`);
+    const [tokenVaultAddress] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [
+        Buffer.from(getIdlConstant("TOKEN_VAULT_SEED")),
+        mintBytes,
+        Buffer.from(remoteTokenBytes),
+      ],
+    });
+    this.logger.debug(`Token Vault: ${tokenVaultAddress}`);
 
-      const ixs: Instruction[] = [
-        getBridgeSplInstruction(
-          {
-            // Accounts
-            payer,
-            from: payer,
-            gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
-            mint,
-            fromTokenAccount,
-            tokenVault: tokenVaultAddress,
-            bridge: bridge.address,
-            outgoingMessage,
-            tokenProgram,
-            systemProgram: SYSTEM_PROGRAM_ADDRESS,
+    const ixs: Instruction[] = [
+      getBridgeSplInstruction(
+        {
+          // Accounts
+          payer,
+          from: payer,
+          gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+          mint,
+          fromTokenAccount,
+          tokenVault: tokenVaultAddress,
+          bridge: bridge.address,
+          outgoingMessage,
+          tokenProgram,
+          systemProgram: SYSTEM_PROGRAM_ADDRESS,
 
-            // Arguments
-            outgoingMessageSalt: salt,
-            to: toBytes(opts.to),
-            remoteToken: remoteTokenBytes,
-            amount: opts.amount,
-            call: null,
-          },
-          { programAddress: this.config.solana.bridgeProgram }
-        ),
-      ];
+          // Arguments
+          outgoingMessageSalt: salt,
+          to: toBytes(opts.to),
+          remoteToken: remoteTokenBytes,
+          amount,
+          call: null,
+        },
+        { programAddress: this.config.solana.bridgeProgram }
+      ),
+    ];
 
-      return await this.submitMessage(
-        ixs,
-        outgoingMessage,
-        payer,
-        !!opts.payForRelay
-      );
-    } catch (error) {
-      console.error("Bridge SPL operation failed:", error);
-      throw error;
-    }
+    return await this.submitMessage(
+      ixs,
+      outgoingMessage,
+      payer,
+      !!opts.payForRelay
+    );
   }
 
   async bridgeWrapped(opts: BridgeWrappedOpts): Promise<SolAddress> {
-    try {
-      const { payer, bridge, outgoingMessage, salt } =
-        await this.setupMessage();
+    const { payer, bridge, outgoingMessage, salt } = await this.setupMessage();
 
-      const { mint, fromTokenAccount, tokenProgram } = await this.setupSpl(
-        opts,
-        payer
-      );
+    const { mint, fromTokenAccount, amount, tokenProgram } =
+      await this.setupSpl(opts, payer);
 
-      const ixs: Instruction[] = [
-        getBridgeWrappedTokenInstruction(
-          {
-            // Accounts
-            payer,
-            from: payer,
-            gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
-            mint,
-            fromTokenAccount,
-            bridge: bridge.address,
-            outgoingMessage,
-            tokenProgram,
-            systemProgram: SYSTEM_PROGRAM_ADDRESS,
+    const ixs: Instruction[] = [
+      getBridgeWrappedTokenInstruction(
+        {
+          // Accounts
+          payer,
+          from: payer,
+          gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+          mint,
+          fromTokenAccount,
+          bridge: bridge.address,
+          outgoingMessage,
+          tokenProgram,
+          systemProgram: SYSTEM_PROGRAM_ADDRESS,
 
-            // Arguments
-            outgoingMessageSalt: salt,
-            to: toBytes(opts.to),
-            amount: opts.amount,
-            call: null,
-          },
-          { programAddress: this.config.solana.bridgeProgram }
-        ),
-      ];
+          // Arguments
+          outgoingMessageSalt: salt,
+          to: toBytes(opts.to),
+          amount,
+          call: null,
+        },
+        { programAddress: this.config.solana.bridgeProgram }
+      ),
+    ];
 
-      return await this.submitMessage(
-        ixs,
-        outgoingMessage,
-        payer,
-        !!opts.payForRelay
-      );
-    } catch (error) {
-      console.error("Bridge Wrapped Token operation failed:", error);
-      throw error;
-    }
+    return await this.submitMessage(
+      ixs,
+      outgoingMessage,
+      payer,
+      !!opts.payForRelay
+    );
   }
 
   async bridgeCall(opts: BridgeCallOpts): Promise<SolAddress> {
-    try {
-      const { payer, bridge, outgoingMessage, salt } =
-        await this.setupMessage();
+    const { payer, bridge, outgoingMessage, salt } = await this.setupMessage();
 
-      // Remove 0x prefix
-      const callData = opts.data.startsWith("0x")
-        ? opts.data.slice(2)
-        : opts.data;
+    // Remove 0x prefix
+    const callData = opts.data.startsWith("0x")
+      ? opts.data.slice(2)
+      : opts.data;
 
-      // Build bridge call instruction
-      const ixs: Instruction[] = [
-        getBridgeCallInstruction(
-          {
-            // Accounts
-            payer,
-            from: payer,
-            gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
-            bridge: bridge.address,
-            outgoingMessage,
-            systemProgram: SYSTEM_PROGRAM_ADDRESS,
+    // Build bridge call instruction
+    const ixs: Instruction[] = [
+      getBridgeCallInstruction(
+        {
+          // Accounts
+          payer,
+          from: payer,
+          gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+          bridge: bridge.address,
+          outgoingMessage,
+          systemProgram: SYSTEM_PROGRAM_ADDRESS,
 
-            // Arguments
-            outgoingMessageSalt: salt,
-            call: {
-              ty: CallType.Call,
-              to: toBytes(opts.to),
-              value: opts.value,
-              data: Buffer.from(callData, "hex"),
-            },
+          // Arguments
+          outgoingMessageSalt: salt,
+          call: {
+            ty: CallType.Call,
+            to: toBytes(opts.to),
+            value: opts.value,
+            data: Buffer.from(callData, "hex"),
           },
-          { programAddress: this.config.solana.bridgeProgram }
-        ),
-      ];
+        },
+        { programAddress: this.config.solana.bridgeProgram }
+      ),
+    ];
 
-      return await this.submitMessage(
-        ixs,
-        outgoingMessage,
-        payer,
-        !!opts.payForRelay
-      );
-    } catch (error) {
-      console.error("Bridge call failed:", error);
-      throw error;
-    }
+    return await this.submitMessage(
+      ixs,
+      outgoingMessage,
+      payer,
+      !!opts.payForRelay
+    );
   }
 
   async wrapToken(opts: WrapTokenOpts): Promise<SolAddress> {
-    try {
-      const { payer, bridge, outgoingMessage, salt } =
-        await this.setupMessage();
+    const { payer, bridge, outgoingMessage, salt } = await this.setupMessage();
 
-      // Instruction arguments
-      const instructionArgs: WrapTokenInstructionDataArgs = {
-        outgoingMessageSalt: salt,
-        decimals: opts.decimals,
-        name: opts.name,
-        symbol: opts.symbol,
-        remoteToken: toBytes(opts.remoteToken),
-        scalerExponent: opts.scalerExponent,
-      };
+    // Instruction arguments
+    const instructionArgs: WrapTokenInstructionDataArgs = {
+      outgoingMessageSalt: salt,
+      decimals: opts.decimals,
+      name: opts.name,
+      symbol: opts.symbol,
+      remoteToken: toBytes(opts.remoteToken),
+      scalerExponent: opts.scalerExponent,
+    };
 
-      const encodedName = Buffer.from(instructionArgs.name);
-      const encodedSymbol = Buffer.from(instructionArgs.symbol);
+    const encodedName = Buffer.from(instructionArgs.name);
+    const encodedSymbol = Buffer.from(instructionArgs.symbol);
 
-      const nameLengthLeBytes = getU64Encoder({ endian: Endian.Little }).encode(
-        encodedName.length
-      );
+    const nameLengthLeBytes = getU64Encoder({ endian: Endian.Little }).encode(
+      encodedName.length
+    );
 
-      const symbolLengthLeBytes = getU64Encoder({
-        endian: Endian.Little,
-      }).encode(encodedSymbol.length);
+    const symbolLengthLeBytes = getU64Encoder({
+      endian: Endian.Little,
+    }).encode(encodedSymbol.length);
 
-      // Calculate metadata hash
-      const metadataHash = keccak256(
-        Buffer.concat([
-          Buffer.from(nameLengthLeBytes),
-          encodedName,
-          Buffer.from(symbolLengthLeBytes),
-          encodedSymbol,
-          Buffer.from(instructionArgs.remoteToken),
-          Buffer.from(getU8Codec().encode(instructionArgs.scalerExponent)),
-        ])
-      );
+    // Calculate metadata hash
+    const metadataHash = keccak256(
+      Buffer.concat([
+        Buffer.from(nameLengthLeBytes),
+        encodedName,
+        Buffer.from(symbolLengthLeBytes),
+        encodedSymbol,
+        Buffer.from(instructionArgs.remoteToken),
+        Buffer.from(getU8Codec().encode(instructionArgs.scalerExponent)),
+      ])
+    );
 
-      const decimalsSeed = Buffer.from(
-        getU8Codec().encode(instructionArgs.decimals)
-      );
+    const decimalsSeed = Buffer.from(
+      getU8Codec().encode(instructionArgs.decimals)
+    );
 
-      const [mintAddress] = await getProgramDerivedAddress({
-        programAddress: this.config.solana.bridgeProgram,
-        seeds: [
-          Buffer.from(getIdlConstant("WRAPPED_TOKEN_SEED")),
-          decimalsSeed,
-          Buffer.from(toBytes(metadataHash)),
-        ],
-      });
-      console.log(`Mint: ${mintAddress}`);
+    const [mintAddress] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [
+        Buffer.from(getIdlConstant("WRAPPED_TOKEN_SEED")),
+        decimalsSeed,
+        Buffer.from(toBytes(metadataHash)),
+      ],
+    });
+    this.logger.debug(`Mint: ${mintAddress}`);
 
-      // Build wrap token instruction
-      const ixs: Instruction[] = [
-        getWrapTokenInstruction(
-          {
-            // Accounts
-            payer,
-            gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
-            mint: mintAddress,
-            bridge: bridge.address,
-            outgoingMessage,
-            tokenProgram: TOKEN_2022_PROGRAM_ADDRESS,
-            systemProgram: SYSTEM_PROGRAM_ADDRESS,
+    // Build wrap token instruction
+    const ixs: Instruction[] = [
+      getWrapTokenInstruction(
+        {
+          // Accounts
+          payer,
+          gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+          mint: mintAddress,
+          bridge: bridge.address,
+          outgoingMessage,
+          tokenProgram: TOKEN_2022_PROGRAM_ADDRESS,
+          systemProgram: SYSTEM_PROGRAM_ADDRESS,
 
-            // Arguments
-            ...instructionArgs,
-          },
-          { programAddress: this.config.solana.bridgeProgram }
-        ),
-      ];
+          // Arguments
+          ...instructionArgs,
+        },
+        { programAddress: this.config.solana.bridgeProgram }
+      ),
+    ];
 
-      return await this.submitMessage(
-        ixs,
-        outgoingMessage,
-        payer,
-        !!opts.payForRelay
-      );
-    } catch (error) {
-      console.error("Token wrap failed:", error);
-      throw error;
-    }
+    return await this.submitMessage(
+      ixs,
+      outgoingMessage,
+      payer,
+      !!opts.payForRelay
+    );
   }
 
   private async setupMessage() {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
     const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
-    console.log(`Payer: ${payer.address}`);
+    this.logger.debug(`Payer: ${payer.address}`);
 
     const [bridgeAccountAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.bridgeProgram,
       seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
     });
-    console.log(`Bridge account: ${bridgeAccountAddress}`);
+    this.logger.debug(`Bridge account: ${bridgeAccountAddress}`);
 
     // Fetch bridge state
     const bridge = await fetchBridge(rpc, bridgeAccountAddress);
 
     const { salt, pubkey: outgoingMessage } =
       await this.outgoingMessagePubkey();
-    console.log(`Outgoing message: ${outgoingMessage}`);
+    this.logger.debug(`Outgoing message: ${outgoingMessage}`);
 
     return { payer, bridge, outgoingMessage, salt };
   }
 
-  private async setupSpl(opts: BridgeWrappedOpts, payer: KeyPairSigner) {
+  private async setupSpl(
+    opts: { mint: string; amount: bigint },
+    payer: KeyPairSigner
+  ) {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
     const mint = address(opts.mint);
-    console.log(`Mint: ${mint}`);
+    this.logger.debug(`Mint: ${mint}`);
 
     const maybeMint = await fetchMaybeMint(rpc, mint);
     if (!maybeMint.exists) {
       throw new Error("Mint not found");
     }
 
-    console.log(`Decimals: ${maybeMint.data.decimals}`);
+    const amount = opts.amount;
+    this.logger.debug(`Amount: ${amount}`);
+    this.logger.debug(`Decimals: ${maybeMint.data.decimals}`);
 
     // Resolve from token account
     const fromTokenAccount = await this.resolveFromTokenAccount(
@@ -439,12 +427,12 @@ export class SolanaEngine {
       payer.address,
       maybeMint
     );
-    console.log(`From Token Account: ${fromTokenAccount}`);
+    this.logger.debug(`From Token Account: ${fromTokenAccount}`);
 
     const tokenProgram = maybeMint.programAddress;
-    console.log(`Token Program: ${tokenProgram}`);
+    this.logger.debug(`Token Program: ${tokenProgram}`);
 
-    return { mint, fromTokenAccount, tokenProgram };
+    return { mint, fromTokenAccount, amount, tokenProgram };
   }
 
   private async submitMessage(
@@ -457,20 +445,20 @@ export class SolanaEngine {
       ixs.push(await this.buildPayForRelayInstruction(outgoingMessage, payer));
     }
 
-    console.log("Sending transaction...");
+    this.logger.debug("Sending transaction...");
     const signature = await this.buildAndSendTransaction(ixs, payer);
-    console.log("Bridge SPL operation completed!");
-    console.log(`Signature: ${signature}`);
+    this.logger.debug("Bridge SPL operation completed!");
+    this.logger.info(`Signature: ${signature}`);
     return outgoingMessage;
   }
 
   private async resolvePayerKeypair(payerKpArg: string) {
     if (payerKpArg === "config") {
-      console.log("Using Solana CLI config for payer keypair");
+      this.logger.debug("Using Solana CLI config for payer keypair");
       return await this.getSolanaCliConfigKeypairSigner();
     }
 
-    console.log(`Using custom payer keypair: ${payerKpArg}`);
+    this.logger.debug(`Using custom payer keypair: ${payerKpArg}`);
     return await this.getKeypairSignerFromPath(payerKpArg);
   }
 
@@ -586,7 +574,7 @@ export class SolanaEngine {
     const { salt, pubkey: messageToRelay } = await this.mtrPubkey(
       this.config.solana.relayerProgram
     );
-    console.log(`Message To Relay: ${messageToRelay}`);
+    this.logger.debug(`Message To Relay: ${messageToRelay}`);
 
     return getPayForRelayInstruction(
       {
