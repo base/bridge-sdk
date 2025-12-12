@@ -64,12 +64,16 @@ export class BaseEngine {
       hash: transactionHash,
     });
 
-    // Extract and decode MessageRegistered events
-    const messageRegisteredEvents = txReceipt.logs
+    if (txReceipt.status !== "success") {
+      throw new Error(`Transaction reverted: ${transactionHash}`);
+    }
+
+    // Extract and decode MessageInitiated events
+    const msgInitEvents = txReceipt.logs
       .map((log) => {
         if (blockNumber < log.blockNumber) {
           throw new Error(
-            `Transaction not finalized yet: ${blockNumber} < ${log.blockNumber}`
+            `Solana bridge state is stale (behind transaction block). Bridge state block: ${blockNumber}, Transaction block: ${log.blockNumber}`
           );
         }
 
@@ -93,15 +97,17 @@ export class BaseEngine {
       })
       .filter((event) => event !== null);
 
-    this.logger.info(
-      `Found ${messageRegisteredEvents.length} MessageRegistered event(s)`
-    );
+    this.logger.info(`Found ${msgInitEvents.length} MessageInitiated event(s)`);
 
-    if (messageRegisteredEvents.length !== 1) {
-      throw new Error("Unexpected number of MessageRegistered events detected");
+    if (msgInitEvents.length === 0) {
+      throw new Error("No MessageInitiated event found in transaction");
     }
 
-    const event = messageRegisteredEvents[0]!;
+    if (msgInitEvents.length > 1) {
+      throw new Error("Multiple MessageInitiated events found (unsupported)");
+    }
+
+    const event = msgInitEvents[0]!;
 
     this.logger.info("Message Details:");
     this.logger.info(`  Hash: ${event.messageHash}`);
