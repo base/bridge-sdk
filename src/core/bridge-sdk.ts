@@ -14,7 +14,6 @@ import type { Address } from "@solana/kit";
 
 export interface BridgeSDKOptions {
   config?: BridgeConfigOverrides;
-  solRpcUrl?: string;
   logger?: Logger;
 }
 
