@@ -1,5 +1,10 @@
 # Bridge SDK
 
+> [!WARNING]
+>
+> This codebase is a work in progress and has not been audited. This is not yet recommended for production use.
+> Use at your own risk.
+
 Composable cross-chain bridge SDK for Base Markets integrations.
 
 ## Getting Started
@@ -85,3 +90,11 @@ Check the `examples/` directory for more usage patterns:
 - `examples/bridgeWrapped.ts`: Bridging wrapped tokens
 - `examples/bridgeCall.ts`: Making cross-chain contract calls
 - `examples/wrapToken.ts`: Wrapping tokens
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
