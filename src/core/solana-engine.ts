@@ -77,17 +77,11 @@ import {
   DEFAULT_RELAY_GAS_LIMIT,
 } from "@/constants";
 import { type Logger, NOOP_LOGGER } from "@/utils/logger";
+import type { CallParams } from "@/types";
 
 export interface SolanaEngineOpts {
   config: BridgeConfig;
   logger?: Logger;
-}
-
-export interface CallParams {
-  to: Address;
-  value: bigint;
-  data: Hex;
-  ty?: CallType;
 }
 
 export interface BridgeSolOpts {
@@ -95,6 +89,7 @@ export interface BridgeSolOpts {
   amount: bigint;
   payForRelay?: boolean;
   call?: CallParams;
+  gasLimit?: bigint;
 }
 
 export interface BridgeSplOpts {
@@ -104,6 +99,7 @@ export interface BridgeSplOpts {
   amount: bigint;
   payForRelay?: boolean;
   call?: CallParams;
+  gasLimit?: bigint;
 }
 
 export interface BridgeWrappedOpts {
@@ -112,10 +108,12 @@ export interface BridgeWrappedOpts {
   amount: bigint;
   payForRelay?: boolean;
   call?: CallParams;
+  gasLimit?: bigint;
 }
 
 export interface BridgeCallOpts extends CallParams {
   payForRelay?: boolean;
+  gasLimit?: bigint;
 }
 
 export interface WrapTokenOpts {
@@ -148,6 +146,7 @@ export class SolanaEngine {
   async bridgeSol(opts: BridgeSolOpts): Promise<SolAddress> {
     return await this.executeBridgeOp(
       opts.payForRelay,
+      opts.gasLimit,
       async ({ payer, bridge, outgoingMessage, salt }) => {
         const solVaultAddress = await this.solVaultPubkey();
         this.logger.debug(`Sol Vault: ${solVaultAddress}`);
@@ -181,6 +180,7 @@ export class SolanaEngine {
   async bridgeSpl(opts: BridgeSplOpts): Promise<SolAddress> {
     return await this.executeBridgeOp(
       opts.payForRelay,
+      opts.gasLimit,
       async ({ payer, bridge, outgoingMessage, salt }) => {
         const { mint, fromTokenAccount, amount, tokenProgram } =
           await this.setupSpl(opts, payer);
@@ -230,6 +230,7 @@ export class SolanaEngine {
   async bridgeWrapped(opts: BridgeWrappedOpts): Promise<SolAddress> {
     return await this.executeBridgeOp(
       opts.payForRelay,
+      opts.gasLimit,
       async ({ payer, bridge, outgoingMessage, salt }) => {
         const { mint, fromTokenAccount, amount, tokenProgram } =
           await this.setupSpl(opts, payer);
@@ -264,6 +265,7 @@ export class SolanaEngine {
   async bridgeCall(opts: BridgeCallOpts): Promise<SolAddress> {
     return await this.executeBridgeOp(
       opts.payForRelay,
+      opts.gasLimit,
       async ({ payer, bridge, outgoingMessage, salt }) => {
         // Remove 0x prefix
         const callData = opts.data.startsWith("0x")
@@ -300,6 +302,7 @@ export class SolanaEngine {
   async wrapToken(opts: WrapTokenOpts): Promise<SolAddress> {
     return await this.executeBridgeOp(
       opts.payForRelay,
+      undefined,
       async ({ payer, bridge, outgoingMessage, salt }) => {
         const instructionArgs: WrapTokenInstructionDataArgs = {
           outgoingMessageSalt: salt,
@@ -629,6 +632,7 @@ export class SolanaEngine {
 
   private async executeBridgeOp(
     payForRelay: boolean | undefined,
+    gasLimit: bigint | undefined,
     builder: (ctx: {
       payer: KeyPairSigner;
       bridge: Awaited<ReturnType<typeof fetchBridge>>;
@@ -640,7 +644,13 @@ export class SolanaEngine {
 
     const ixs = await builder({ payer, bridge, outgoingMessage, salt });
 
-    return await this.submitMessage(ixs, outgoingMessage, payer, !!payForRelay);
+    return await this.submitMessage(
+      ixs,
+      outgoingMessage,
+      payer,
+      !!payForRelay,
+      gasLimit
+    );
   }
 
   private async setupMessage() {
@@ -701,10 +711,13 @@ export class SolanaEngine {
     ixs: Instruction[],
     outgoingMessage: SolAddress,
     payer: KeyPairSigner,
-    payForRelay: boolean
+    payForRelay: boolean,
+    gasLimit?: bigint
   ): Promise<SolAddress> {
     if (payForRelay) {
-      ixs.push(await this.buildPayForRelayInstruction(outgoingMessage, payer));
+      ixs.push(
+        await this.buildPayForRelayInstruction(outgoingMessage, payer, gasLimit)
+      );
     }
 
     this.logger.debug("Sending transaction...");
@@ -826,7 +839,8 @@ export class SolanaEngine {
 
   private async buildPayForRelayInstruction(
     outgoingMessage: SolAddress,
-    payer: KeyPairSigner<string>
+    payer: KeyPairSigner<string>,
+    gasLimit?: bigint
   ) {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
@@ -854,7 +868,7 @@ export class SolanaEngine {
 
         // Arguments
         outgoingMessage: outgoingMessage,
-        gasLimit: DEFAULT_RELAY_GAS_LIMIT,
+        gasLimit: gasLimit ?? DEFAULT_RELAY_GAS_LIMIT,
       },
       { programAddress: this.config.solana.relayerProgram }
     );

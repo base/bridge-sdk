@@ -4,7 +4,7 @@ import type {
   OutgoingMessage,
 } from "@/clients/ts/src/bridge";
 import { BRIDGE_ABI } from "@/interfaces/abis/bridge.abi";
-import { MessageType, type BridgeConfig } from "@/types";
+import { MessageType, type BridgeConfig, type CallParams } from "@/types";
 import {
   getBase58Codec,
   getBase58Encoder,
@@ -46,6 +46,15 @@ export class BaseEngine {
       chain: this.config.base.chain,
       transport: http(),
     }) as PublicClient;
+  }
+
+  async estimateGasForCall(call: CallParams): Promise<bigint> {
+    return await this.publicClient.estimateGas({
+      account: this.config.base.bridgeContract,
+      to: call.to,
+      data: call.data,
+      value: call.value,
+    });
   }
 
   async monitorMessageExecution(
