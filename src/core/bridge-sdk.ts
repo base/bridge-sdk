@@ -1,5 +1,5 @@
 import { type BridgeConfig, type BridgeConfigOverrides } from "@/types";
-import { DEFAULT_CONFIG } from "@/config/defaults";
+import { mergeConfig } from "@/config/defaults";
 import {
   SolanaEngine,
   type BridgeCallOpts,
@@ -18,17 +18,6 @@ export interface BridgeSDKOptions {
   solanaEngine?: SolanaEngine;
   baseEngine?: BaseEngine;
 }
-
-const mergeConfig = (overrides?: BridgeConfigOverrides): BridgeConfig => ({
-  solana: {
-    ...DEFAULT_CONFIG.solana,
-    ...(overrides?.solana ?? {}),
-  },
-  base: {
-    ...DEFAULT_CONFIG.base,
-    ...(overrides?.base ?? {}),
-  },
-});
 
 export class BridgeSDK {
   readonly config: BridgeConfig;
