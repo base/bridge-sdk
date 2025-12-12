@@ -15,6 +15,8 @@ import type { Address } from "@solana/kit";
 export interface BridgeSDKOptions {
   config?: BridgeConfigOverrides;
   logger?: Logger;
+  solanaEngine?: SolanaEngine;
+  baseEngine?: BaseEngine;
 }
 
 const mergeConfig = (overrides?: BridgeConfigOverrides): BridgeConfig => ({
@@ -35,14 +37,18 @@ export class BridgeSDK {
 
   constructor(options: BridgeSDKOptions = {}) {
     this.config = mergeConfig(options.config);
-    this.solanaEngine = new SolanaEngine({
-      config: this.config,
-      logger: options.logger,
-    });
-    this.baseEngine = new BaseEngine({
-      config: this.config,
-      logger: options.logger,
-    });
+    this.solanaEngine =
+      options.solanaEngine ??
+      new SolanaEngine({
+        config: this.config,
+        logger: options.logger,
+      });
+    this.baseEngine =
+      options.baseEngine ??
+      new BaseEngine({
+        config: this.config,
+        logger: options.logger,
+      });
   }
 
   async bridgeSol(opts: BridgeSolOpts): Promise<Address> {
