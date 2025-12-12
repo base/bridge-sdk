@@ -3,6 +3,7 @@ import {
   CallType,
   fetchBridge,
   fetchMaybeIncomingMessage,
+  fetchMaybeOutgoingMessage,
   fetchOutgoingMessage,
   getBridgeCallInstruction,
   getBridgeSolInstruction,
@@ -83,8 +84,11 @@ import {
   SYSTEM_PROGRAM_ADDRESS,
   TOKEN_2022_PROGRAM_ADDRESS,
   DEFAULT_RELAY_GAS_LIMIT,
+  DEFAULT_MONITOR_POLL_INTERVAL_MS,
+  DEFAULT_MONITOR_TIMEOUT_MS,
 } from "@/constants";
 import { type Logger, NOOP_LOGGER } from "@/utils/logger";
+import { sleep } from "@/utils/time";
 import type { CallParams } from "@/types";
 
 export interface SolanaEngineOpts {
@@ -145,9 +149,23 @@ export class SolanaEngine {
   }
 
   async getOutgoingMessage(
-    pubkey: SolAddress
+    pubkey: SolAddress,
+    options: { timeoutMs?: number; pollIntervalMs?: number } = {}
   ): Promise<Account<OutgoingMessage, string>> {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const timeoutMs = options.timeoutMs ?? DEFAULT_MONITOR_TIMEOUT_MS;
+    const pollIntervalMs =
+      options.pollIntervalMs ?? DEFAULT_MONITOR_POLL_INTERVAL_MS;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime <= timeoutMs) {
+      const maybeAccount = await fetchMaybeOutgoingMessage(rpc, pubkey);
+      if (maybeAccount.exists) {
+        return maybeAccount as Account<OutgoingMessage, string>;
+      }
+      await sleep(pollIntervalMs);
+    }
+
     return await fetchOutgoingMessage(rpc, pubkey);
   }
 

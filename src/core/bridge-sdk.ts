@@ -82,9 +82,16 @@ export class BridgeSDK {
     return await this.solanaEngine.wrapToken(opts);
   }
 
-  async waitForMessageExecution(outgoingMessagePubkey: Address) {
+  async waitForMessageExecution(
+    outgoingMessagePubkey: Address,
+    options: { timeoutMs?: number; pollIntervalMs?: number } = {}
+  ) {
     await this.baseEngine.monitorMessageExecution(
-      await this.solanaEngine.getOutgoingMessage(outgoingMessagePubkey)
+      await this.solanaEngine.getOutgoingMessage(
+        outgoingMessagePubkey,
+        options
+      ),
+      options
     );
   }
 
