@@ -2,7 +2,6 @@ import { existsSync } from "fs";
 import {
   CallType,
   fetchBridge,
-  fetchIncomingMessage,
   fetchMaybeIncomingMessage,
   fetchOutgoingMessage,
   getBridgeCallInstruction,
@@ -489,7 +488,16 @@ export class SolanaEngine {
     this.logger.info(`Message PDA: ${messagePda}`);
 
     // Fetch the message to get the sender for the bridge CPI authority
-    const incomingMessage = await fetchIncomingMessage(rpc, messagePda);
+    const maybeIncomingMessage = await fetchMaybeIncomingMessage(
+      rpc,
+      messagePda
+    );
+    if (!maybeIncomingMessage.exists) {
+      throw new Error(
+        `Message not found at ${messagePda}. Ensure it has been proven on Solana first.`
+      );
+    }
+    const incomingMessage = maybeIncomingMessage;
     this.logger.info(
       `Message sender: ${toHex(Buffer.from(incomingMessage.data.sender))}`
     );
