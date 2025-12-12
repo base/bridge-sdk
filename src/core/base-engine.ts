@@ -22,6 +22,11 @@ import {
   type Hex,
   type PublicClient,
 } from "viem";
+import {
+  DEFAULT_EVM_GAS_LIMIT,
+  DEFAULT_MONITOR_POLL_INTERVAL_MS,
+  DEFAULT_MONITOR_TIMEOUT_MS,
+} from "@/constants";
 import { type Logger, NOOP_LOGGER } from "@/utils/logger";
 
 export interface BaseEngineOpts {
@@ -44,8 +49,14 @@ export class BaseEngine {
   }
 
   async monitorMessageExecution(
-    outgoingMessageAccount: Account<OutgoingMessage, string>
+    outgoingMessageAccount: Account<OutgoingMessage, string>,
+    options: { timeoutMs?: number; pollIntervalMs?: number } = {}
   ) {
+    const timeoutMs = options.timeoutMs ?? DEFAULT_MONITOR_TIMEOUT_MS;
+    const pollIntervalMs =
+      options.pollIntervalMs ?? DEFAULT_MONITOR_POLL_INTERVAL_MS;
+    const startTime = Date.now();
+
     this.logger.info("Monitoring message execution...");
 
     const { innerHash, outerHash } = this.buildEvmMessage(
@@ -54,7 +65,7 @@ export class BaseEngine {
     this.logger.debug(`Computed inner hash: ${innerHash}`);
     this.logger.debug(`Computed outer hash: ${outerHash}`);
 
-    while (true) {
+    while (Date.now() - startTime <= timeoutMs) {
       this.logger.debug(
         `Waiting for automatic relay of message ${outerHash}...`
       );
@@ -71,8 +82,10 @@ export class BaseEngine {
         return;
       }
 
-      await sleep(10_000);
+      await sleep(pollIntervalMs);
     }
+
+    throw new Error(`Monitor message execution timed out after ${timeoutMs}ms`);
   }
 
   private buildEvmMessage(
@@ -100,7 +113,7 @@ export class BaseEngine {
 
     const evmMessage = {
       outgoingMessagePubkey: this.bytes32FromPubkey(outgoing.address),
-      gasLimit: 100_000n,
+      gasLimit: DEFAULT_EVM_GAS_LIMIT,
       nonce,
       sender: senderBytes32,
       ty,

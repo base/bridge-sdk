@@ -18,3 +18,7 @@ export const SYSTEM_PROGRAM_ADDRESS = address(
 );
 
 export const DEFAULT_RELAY_GAS_LIMIT = 200_000n;
+
+export const DEFAULT_MONITOR_TIMEOUT_MS = 60_000;
+export const DEFAULT_MONITOR_POLL_INTERVAL_MS = 5_000;
+export const DEFAULT_EVM_GAS_LIMIT = 100_000n;
