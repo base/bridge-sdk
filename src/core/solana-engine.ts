@@ -2,16 +2,27 @@ import { existsSync } from "fs";
 import {
   CallType,
   fetchBridge,
+  fetchIncomingMessage,
   fetchOutgoingMessage,
   getBridgeCallInstruction,
   getBridgeSolInstruction,
   getBridgeSplInstruction,
   getBridgeWrappedTokenInstruction,
+  getRelayMessageInstruction,
   getWrapTokenInstruction,
+  type Ix,
   type OutgoingMessage,
   type WrapTokenInstructionDataArgs,
 } from "@/clients/ts/src/bridge";
-import type { BridgeConfig } from "@/types";
+import type {
+  BridgeConfig,
+  MessageCall,
+  MessageTransfer,
+  MessageTransferSol,
+  MessageTransferSpl,
+  MessageTransferWrappedToken,
+  Rpc,
+} from "@/types";
 import { getIdlConstant } from "@/utils/bridge-idl.constants";
 import {
   addSignersToTransactionMessage,
@@ -40,8 +51,12 @@ import {
   getU8Codec,
   getU64Encoder,
   Endian,
+  AccountRole,
+  type AccountMeta,
+  getBase58Codec,
+  type Signature,
 } from "@solana/kit";
-import { keccak256, toBytes, type Address, type Hex } from "viem";
+import { keccak256, toBytes, toHex, type Address, type Hex } from "viem";
 import { homedir } from "os";
 import { join } from "path";
 import {
@@ -351,6 +366,249 @@ export class SolanaEngine {
         ];
       }
     );
+  }
+
+  async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
+    try {
+      const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+
+      const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
+      this.logger.debug(`Payer: ${payer.address}`);
+
+      const [messagePda] = await getProgramDerivedAddress({
+        programAddress: this.config.solana.bridgeProgram,
+        seeds: [
+          Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),
+          toBytes(messageHash),
+        ],
+      });
+      this.logger.info(`Message PDA: ${messagePda}`);
+
+      // Fetch the message to get the sender for the bridge CPI authority
+      const incomingMessage = await fetchIncomingMessage(rpc, messagePda);
+      this.logger.info(
+        `Message sender: ${toHex(Buffer.from(incomingMessage.data.sender))}`
+      );
+
+      if (incomingMessage.data.executed) {
+        throw new Error("Message has already been executed");
+      }
+
+      const [bridgeCpiAuthorityPda] = await getProgramDerivedAddress({
+        programAddress: this.config.solana.bridgeProgram,
+        seeds: [
+          Buffer.from(getIdlConstant("BRIDGE_CPI_AUTHORITY_SEED")),
+          Buffer.from(incomingMessage.data.sender),
+        ],
+      });
+      this.logger.info(`Bridge CPI Authority PDA: ${bridgeCpiAuthorityPda}`);
+
+      const message = incomingMessage.data.message;
+
+      let remainingAccounts =
+        message.__kind === "Call"
+          ? await this.messageCallAccounts(message)
+          : await this.messageTransferAccounts(
+              rpc,
+              message,
+              this.config.solana.bridgeProgram
+            );
+
+      // Set the role to readonly for the bridge CPI authority account (if it exists)
+      remainingAccounts = remainingAccounts.map((acct) => {
+        if (acct.address === bridgeCpiAuthorityPda) {
+          return { ...acct, role: AccountRole.READONLY };
+        }
+        return acct;
+      });
+
+      const [bridgeAccountAddress] = await getProgramDerivedAddress({
+        programAddress: this.config.solana.bridgeProgram,
+        seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
+      });
+      this.logger.info(`Bridge account address: ${bridgeAccountAddress}`);
+
+      const relayMessageIx = getRelayMessageInstruction(
+        { message: messagePda, bridge: bridgeAccountAddress },
+        { programAddress: this.config.solana.bridgeProgram }
+      );
+
+      const relayMessageIxWithRemainingAccounts: Instruction = {
+        programAddress: relayMessageIx.programAddress,
+        accounts: [...relayMessageIx.accounts, ...remainingAccounts],
+        data: relayMessageIx.data,
+      };
+
+      this.logger.info("Sending transaction...");
+      const signature = await this.buildAndSendTransaction(
+        [relayMessageIxWithRemainingAccounts],
+        payer
+      );
+      this.logger.info(`Signature: ${signature}`);
+      return signature;
+    } catch (error) {
+      this.logger.error("Failed to relay message:", error);
+      throw error;
+    }
+  }
+
+  private async messageCallAccounts(message: MessageCall) {
+    this.logger.info(`Call message with ${message.fields.length} instructions`);
+
+    const ixs = message.fields[0];
+    if (ixs.length === 0) {
+      throw new Error("Zero instructions in call message");
+    }
+
+    // Include both the accounts and program IDs for each instruction
+    return [
+      ...(await this.getIxAccounts(ixs)),
+      ...ixs.map((i) => ({
+        address: i.programId,
+        role: AccountRole.READONLY,
+      })),
+    ];
+  }
+
+  private async messageTransferAccounts(
+    rpc: Rpc,
+    message: MessageTransfer,
+    solanaBridge: SolAddress
+  ) {
+    this.logger.info(
+      `Transfer message with ${message.ixs.length} instructions`
+    );
+
+    const remainingAccounts: Array<AccountMeta> =
+      message.transfer.__kind === "Sol"
+        ? await this.messageTransferSolAccounts(message.transfer, solanaBridge)
+        : message.transfer.__kind === "Spl"
+        ? await this.messageTransferSplAccounts(
+            rpc,
+            message.transfer,
+            solanaBridge
+          )
+        : await this.messageTransferWrappedTokenAccounts(message.transfer);
+
+    // Process the list of optional instructions
+    const ixs = message.ixs;
+
+    // Include both the accounts and program IDs for each instruction
+    remainingAccounts.push(
+      ...(await this.getIxAccounts(ixs)),
+      ...ixs.map((i) => ({
+        address: i.programId,
+        role: AccountRole.READONLY,
+      }))
+    );
+
+    return remainingAccounts;
+  }
+
+  private async messageTransferSolAccounts(
+    message: MessageTransferSol,
+    solanaBridge: SolAddress
+  ) {
+    this.logger.info("SOL transfer detected");
+
+    const { to, amount } = message.fields[0];
+
+    this.logger.info(`SOL transfer:`);
+    this.logger.info(`  To: ${to}`);
+    this.logger.info(`  Amount: ${amount}`);
+
+    const [solVaultPda] = await getProgramDerivedAddress({
+      programAddress: solanaBridge,
+      seeds: [Buffer.from(getIdlConstant("SOL_VAULT_SEED"))],
+    });
+    this.logger.info(`SOL vault PDA: ${solVaultPda}`);
+
+    return [
+      { address: solVaultPda, role: AccountRole.WRITABLE },
+      { address: to, role: AccountRole.WRITABLE },
+      { address: SYSTEM_PROGRAM_ADDRESS, role: AccountRole.READONLY },
+    ];
+  }
+
+  private async messageTransferSplAccounts(
+    rpc: Rpc,
+    message: MessageTransferSpl,
+    solanaBridge: SolAddress
+  ) {
+    this.logger.info("SPL transfer detected");
+
+    const { remoteToken, localToken, to, amount } = message.fields[0];
+
+    this.logger.info(`SPL transfer:`);
+    this.logger.info(`  RemoteToken: 0x${remoteToken.toHex()}`);
+    this.logger.info(`  LocalToken: ${localToken}`);
+    this.logger.info(`  To: ${to}`);
+    this.logger.info(`  Amount: ${amount}`);
+
+    const [tokenVaultPda] = await getProgramDerivedAddress({
+      programAddress: solanaBridge,
+      seeds: [
+        Buffer.from(getIdlConstant("TOKEN_VAULT_SEED")),
+        getBase58Codec().encode(localToken),
+        Buffer.from(remoteToken),
+      ],
+    });
+
+    const mint = await rpc.getAccountInfo(localToken).send();
+    if (!mint.value) {
+      throw new Error("Mint not found");
+    }
+
+    return [
+      { address: localToken, role: AccountRole.READONLY },
+      { address: tokenVaultPda, role: AccountRole.WRITABLE },
+      { address: to, role: AccountRole.WRITABLE },
+      { address: mint.value!.owner, role: AccountRole.READONLY },
+    ];
+  }
+
+  private async messageTransferWrappedTokenAccounts(
+    message: MessageTransferWrappedToken
+  ) {
+    this.logger.info(`WrappedToken transfer detected`);
+
+    const { localToken, to, amount } = message.fields[0];
+
+    this.logger.info(`WrappedToken transfer:`);
+    this.logger.info(`  Local Token: ${localToken}`);
+    this.logger.info(`  To: ${to}`);
+    this.logger.info(`  Amount: ${amount}`);
+
+    return [
+      { address: localToken, role: AccountRole.WRITABLE },
+      { address: to, role: AccountRole.WRITABLE },
+      { address: TOKEN_2022_PROGRAM_ADDRESS, role: AccountRole.READONLY },
+    ];
+  }
+
+  private async getIxAccounts(ixs: Ix[]) {
+    const allIxsAccounts = [];
+
+    for (const ix of ixs) {
+      const ixAccounts = await Promise.all(
+        ix.accounts.map(async (acc) => {
+          return {
+            address: acc.pubkey,
+            role: acc.isWritable
+              ? acc.isSigner
+                ? AccountRole.WRITABLE_SIGNER
+                : AccountRole.WRITABLE
+              : acc.isSigner
+              ? AccountRole.READONLY_SIGNER
+              : AccountRole.READONLY,
+          };
+        })
+      );
+
+      allIxsAccounts.push(...ixAccounts);
+    }
+
+    return allIxsAccounts;
   }
 
   private formatCall(call?: CallParams) {

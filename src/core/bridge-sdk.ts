@@ -10,7 +10,8 @@ import {
 } from "./solana-engine";
 import { type Logger } from "@/utils/logger";
 import { BaseEngine } from "./base-engine";
-import type { Address } from "@solana/kit";
+import type { Address, Signature } from "@solana/kit";
+import type { Hex } from "viem";
 
 export interface BridgeSDKOptions {
   config?: BridgeConfigOverrides;
@@ -64,6 +65,10 @@ export class BridgeSDK {
     await this.baseEngine.monitorMessageExecution(
       await this.solanaEngine.getOutgoingMessage(outgoingMessagePubkey)
     );
+  }
+
+  async executeOnSolana(msgHash: Hex): Promise<Signature> {
+    return await this.solanaEngine.handleExecuteMessage(msgHash);
   }
 }
 
