@@ -11,7 +11,7 @@ import {
   type Account,
   type Address,
 } from "@solana/kit";
-import { sleep } from "bun";
+import { sleep } from "@/utils/time";
 import {
   createPublicClient,
   encodeAbiParameters,
@@ -135,9 +135,9 @@ export class BaseEngine {
       const transfer = msg.fields[0];
 
       const transferTuple = {
-        localToken: `0x${toHex(new Uint8Array(transfer.remoteToken)).slice(2)}`,
+        localToken: toHex(new Uint8Array(transfer.remoteToken)),
         remoteToken: this.bytes32FromPubkey(transfer.localToken),
-        to: padHex(`0x${toHex(new Uint8Array(transfer.to)).slice(2)}`, {
+        to: padHex(toHex(new Uint8Array(transfer.to)), {
           size: 32,
           // Bytes32 `to` expects the EVM address in the first 20 bytes.
           // Right-pad zeros so casting `bytes20(to)` yields the intended address.
