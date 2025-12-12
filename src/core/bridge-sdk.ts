@@ -88,7 +88,9 @@ export class BridgeSDK {
     );
   }
 
-  async proveOnSolana(transactionHash: Hash): Promise<Hash> {
+  async proveOnSolana(
+    transactionHash: Hash
+  ): Promise<{ signature?: Signature; messageHash: Hash }> {
     const blockNumber = await this.solanaEngine.getLatestBaseBlockNumber();
     const { event, rawProof } = await this.baseEngine.generateProof(
       transactionHash,

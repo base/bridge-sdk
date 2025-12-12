@@ -7,7 +7,7 @@ async function main() {
 
   const transactionHash = "0x"; // Base -> Solana transaction hash of init tx on Base
 
-  const messageHash = await baseBridgeClient.proveOnSolana(transactionHash);
+  const { messageHash } = await baseBridgeClient.proveOnSolana(transactionHash);
   const signature = await baseBridgeClient.executeOnSolana(messageHash);
   console.log(`Signature: ${signature}`);
 }

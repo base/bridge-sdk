@@ -405,7 +405,7 @@ export class SolanaEngine {
     },
     rawProof: readonly `0x${string}`[],
     blockNumber: bigint
-  ): Promise<Hash> {
+  ): Promise<{ signature?: Signature; messageHash: Hash }> {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
     const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
@@ -440,7 +440,7 @@ export class SolanaEngine {
     const maybeMessage = await fetchMaybeIncomingMessage(rpc, messageAddress);
     if (maybeMessage.exists) {
       this.logger.info("Message already proven on Solana");
-      return event.messageHash;
+      return { messageHash: event.messageHash };
     }
 
     // Build prove message instruction
@@ -470,7 +470,7 @@ export class SolanaEngine {
     this.logger.info(`Signature: ${signature}`);
 
     // Return message hash for potential relay
-    return event.messageHash;
+    return { signature, messageHash: event.messageHash };
   }
 
   async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
