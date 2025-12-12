@@ -11,7 +11,7 @@ import {
 import { type Logger } from "@/utils/logger";
 import { BaseEngine } from "./base-engine";
 import type { Address, Signature } from "@solana/kit";
-import type { Hex } from "viem";
+import type { Hash, Hex } from "viem";
 import { DEFAULT_RELAY_GAS_LIMIT } from "@/constants";
 
 export interface BridgeSDKOptions {
@@ -85,6 +85,21 @@ export class BridgeSDK {
   async waitForMessageExecution(outgoingMessagePubkey: Address) {
     await this.baseEngine.monitorMessageExecution(
       await this.solanaEngine.getOutgoingMessage(outgoingMessagePubkey)
+    );
+  }
+
+  async proveOnSolana(
+    transactionHash: Hash
+  ): Promise<{ signature?: Signature; messageHash: Hash }> {
+    const blockNumber = await this.solanaEngine.getLatestBaseBlockNumber();
+    const { event, rawProof } = await this.baseEngine.generateProof(
+      transactionHash,
+      blockNumber
+    );
+    return await this.solanaEngine.handleProveMessage(
+      event,
+      rawProof,
+      blockNumber
     );
   }
 

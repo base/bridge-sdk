@@ -3,11 +3,13 @@ import {
   CallType,
   fetchBridge,
   fetchIncomingMessage,
+  fetchMaybeIncomingMessage,
   fetchOutgoingMessage,
   getBridgeCallInstruction,
   getBridgeSolInstruction,
   getBridgeSplInstruction,
   getBridgeWrappedTokenInstruction,
+  getProveMessageInstruction,
   getRelayMessageInstruction,
   getWrapTokenInstruction,
   type Ix,
@@ -56,7 +58,14 @@ import {
   getBase58Codec,
   type Signature,
 } from "@solana/kit";
-import { keccak256, toBytes, toHex, type Address, type Hex } from "viem";
+import {
+  keccak256,
+  toBytes,
+  toHex,
+  type Address,
+  type Hash,
+  type Hex,
+} from "viem";
 import { homedir } from "os";
 import { join } from "path";
 import {
@@ -371,88 +380,176 @@ export class SolanaEngine {
     );
   }
 
-  async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
-    try {
-      const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+  async getLatestBaseBlockNumber(): Promise<bigint> {
+    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
-      const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
-      this.logger.debug(`Payer: ${payer.address}`);
+    const [bridgeAddress] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
+    });
+    this.logger.info(`Bridge: ${bridgeAddress}`);
 
-      const [messagePda] = await getProgramDerivedAddress({
-        programAddress: this.config.solana.bridgeProgram,
-        seeds: [
-          Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),
-          toBytes(messageHash),
-        ],
-      });
-      this.logger.info(`Message PDA: ${messagePda}`);
+    const bridge = await fetchBridge(rpc, bridgeAddress);
+    return bridge.data.baseBlockNumber;
+  }
 
-      // Fetch the message to get the sender for the bridge CPI authority
-      const incomingMessage = await fetchIncomingMessage(rpc, messagePda);
-      this.logger.info(
-        `Message sender: ${toHex(Buffer.from(incomingMessage.data.sender))}`
-      );
-
-      if (incomingMessage.data.executed) {
-        throw new Error("Message has already been executed");
-      }
-
-      const [bridgeCpiAuthorityPda] = await getProgramDerivedAddress({
-        programAddress: this.config.solana.bridgeProgram,
-        seeds: [
-          Buffer.from(getIdlConstant("BRIDGE_CPI_AUTHORITY_SEED")),
-          Buffer.from(incomingMessage.data.sender),
-        ],
-      });
-      this.logger.info(`Bridge CPI Authority PDA: ${bridgeCpiAuthorityPda}`);
-
-      const message = incomingMessage.data.message;
-
-      let remainingAccounts =
-        message.__kind === "Call"
-          ? await this.messageCallAccounts(message)
-          : await this.messageTransferAccounts(
-              rpc,
-              message,
-              this.config.solana.bridgeProgram
-            );
-
-      // Set the role to readonly for the bridge CPI authority account (if it exists)
-      remainingAccounts = remainingAccounts.map((acct) => {
-        if (acct.address === bridgeCpiAuthorityPda) {
-          return { ...acct, role: AccountRole.READONLY };
-        }
-        return acct;
-      });
-
-      const [bridgeAccountAddress] = await getProgramDerivedAddress({
-        programAddress: this.config.solana.bridgeProgram,
-        seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
-      });
-      this.logger.info(`Bridge account address: ${bridgeAccountAddress}`);
-
-      const relayMessageIx = getRelayMessageInstruction(
-        { message: messagePda, bridge: bridgeAccountAddress },
-        { programAddress: this.config.solana.bridgeProgram }
-      );
-
-      const relayMessageIxWithRemainingAccounts: Instruction = {
-        programAddress: relayMessageIx.programAddress,
-        accounts: [...relayMessageIx.accounts, ...remainingAccounts],
-        data: relayMessageIx.data,
+  async handleProveMessage(
+    event: {
+      messageHash: `0x${string}`;
+      mmrRoot: `0x${string}`;
+      message: {
+        nonce: bigint;
+        sender: `0x${string}`;
+        data: `0x${string}`;
       };
+    },
+    rawProof: readonly `0x${string}`[],
+    blockNumber: bigint
+  ): Promise<{ signature?: Signature; messageHash: Hash }> {
+    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
-      this.logger.info("Sending transaction...");
-      const signature = await this.buildAndSendTransaction(
-        [relayMessageIxWithRemainingAccounts],
-        payer
-      );
-      this.logger.info(`Signature: ${signature}`);
-      return signature;
-    } catch (error) {
-      this.logger.error("Failed to relay message:", error);
-      throw error;
+    const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
+    this.logger.debug(`Payer: ${payer.address}`);
+
+    const [bridgeAddress] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
+    });
+
+    const [outputRootAddress] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [
+        Buffer.from(getIdlConstant("OUTPUT_ROOT_SEED")),
+        getU64Encoder({ endian: Endian.Little }).encode(blockNumber),
+      ],
+    });
+    this.logger.info(`Output Root: ${outputRootAddress}`);
+
+    const [messageAddress] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [
+        Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),
+        toBytes(event.messageHash),
+      ],
+    });
+    this.logger.info(`Message: ${messageAddress}`);
+    this.logger.info(`Nonce: ${event.message.nonce}`);
+    this.logger.info(`Sender: ${event.message.sender}`);
+    this.logger.info(`Message Hash: ${event.messageHash}`);
+
+    const maybeMessage = await fetchMaybeIncomingMessage(rpc, messageAddress);
+    if (maybeMessage.exists) {
+      this.logger.info("Message already proven on Solana");
+      return { messageHash: event.messageHash };
     }
+
+    // Build prove message instruction
+    this.logger.info("Building instruction...");
+    const ix = getProveMessageInstruction(
+      {
+        // Accounts
+        payer,
+        outputRoot: outputRootAddress,
+        message: messageAddress,
+        bridge: bridgeAddress,
+        systemProgram: SYSTEM_PROGRAM_ADDRESS,
+
+        // Arguments
+        nonce: event.message.nonce,
+        sender: toBytes(event.message.sender),
+        data: toBytes(event.message.data),
+        proof: rawProof.map((e: string) => toBytes(e)),
+        messageHash: toBytes(event.messageHash),
+      },
+      { programAddress: this.config.solana.bridgeProgram }
+    );
+
+    this.logger.info("Sending transaction...");
+    const signature = await this.buildAndSendTransaction([ix], payer);
+    this.logger.info("Message proof completed");
+    this.logger.info(`Signature: ${signature}`);
+
+    // Return message hash for potential relay
+    return { signature, messageHash: event.messageHash };
+  }
+
+  async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
+    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+
+    const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
+    this.logger.debug(`Payer: ${payer.address}`);
+
+    const [messagePda] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [
+        Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),
+        toBytes(messageHash),
+      ],
+    });
+    this.logger.info(`Message PDA: ${messagePda}`);
+
+    // Fetch the message to get the sender for the bridge CPI authority
+    const incomingMessage = await fetchIncomingMessage(rpc, messagePda);
+    this.logger.info(
+      `Message sender: ${toHex(Buffer.from(incomingMessage.data.sender))}`
+    );
+
+    if (incomingMessage.data.executed) {
+      throw new Error("Message has already been executed");
+    }
+
+    const [bridgeCpiAuthorityPda] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [
+        Buffer.from(getIdlConstant("BRIDGE_CPI_AUTHORITY_SEED")),
+        Buffer.from(incomingMessage.data.sender),
+      ],
+    });
+    this.logger.info(`Bridge CPI Authority PDA: ${bridgeCpiAuthorityPda}`);
+
+    const message = incomingMessage.data.message;
+
+    let remainingAccounts =
+      message.__kind === "Call"
+        ? await this.messageCallAccounts(message)
+        : await this.messageTransferAccounts(
+            rpc,
+            message,
+            this.config.solana.bridgeProgram
+          );
+
+    // Set the role to readonly for the bridge CPI authority account (if it exists)
+    remainingAccounts = remainingAccounts.map((acct) => {
+      if (acct.address === bridgeCpiAuthorityPda) {
+        return { ...acct, role: AccountRole.READONLY };
+      }
+      return acct;
+    });
+
+    const [bridgeAccountAddress] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
+    });
+    this.logger.info(`Bridge account address: ${bridgeAccountAddress}`);
+
+    const relayMessageIx = getRelayMessageInstruction(
+      { message: messagePda, bridge: bridgeAccountAddress },
+      { programAddress: this.config.solana.bridgeProgram }
+    );
+
+    const relayMessageIxWithRemainingAccounts: Instruction = {
+      programAddress: relayMessageIx.programAddress,
+      accounts: [...relayMessageIx.accounts, ...remainingAccounts],
+      data: relayMessageIx.data,
+    };
+
+    this.logger.info("Sending transaction...");
+    const signature = await this.buildAndSendTransaction(
+      [relayMessageIxWithRemainingAccounts],
+      payer
+    );
+    this.logger.info(`Signature: ${signature}`);
+    return signature;
   }
 
   private async messageCallAccounts(message: MessageCall) {
