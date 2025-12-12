@@ -14,11 +14,13 @@ import {
 import { sleep } from "@/utils/time";
 import {
   createPublicClient,
+  decodeEventLog,
   encodeAbiParameters,
   http,
   keccak256,
   padHex,
   toHex,
+  type Hash,
   type Hex,
   type PublicClient,
 } from "viem";
@@ -55,6 +57,71 @@ export class BaseEngine {
       data: call.data,
       value: call.value,
     });
+  }
+
+  async generateProof(transactionHash: Hash, blockNumber: bigint) {
+    const txReceipt = await this.publicClient.getTransactionReceipt({
+      hash: transactionHash,
+    });
+
+    // Extract and decode MessageRegistered events
+    const messageRegisteredEvents = txReceipt.logs
+      .map((log) => {
+        if (blockNumber < log.blockNumber) {
+          throw new Error(
+            `Transaction not finalized yet: ${blockNumber} < ${log.blockNumber}`
+          );
+        }
+
+        try {
+          const decodedLog = decodeEventLog({
+            abi: BRIDGE_ABI,
+            data: log.data,
+            topics: log.topics,
+          });
+
+          return decodedLog.eventName === "MessageInitiated"
+            ? {
+                messageHash: decodedLog.args.messageHash,
+                mmrRoot: decodedLog.args.mmrRoot,
+                message: decodedLog.args.message,
+              }
+            : null;
+        } catch (error) {
+          return null;
+        }
+      })
+      .filter((event) => event !== null);
+
+    this.logger.info(
+      `Found ${messageRegisteredEvents.length} MessageRegistered event(s)`
+    );
+
+    if (messageRegisteredEvents.length !== 1) {
+      throw new Error("Unexpected number of MessageRegistered events detected");
+    }
+
+    const event = messageRegisteredEvents[0]!;
+
+    this.logger.info("Message Details:");
+    this.logger.info(`  Hash: ${event.messageHash}`);
+    this.logger.info(`  MMR Root: ${event.mmrRoot}`);
+    this.logger.info(`  Nonce: ${event.message.nonce}`);
+    this.logger.info(`  Sender: ${event.message.sender}`);
+    this.logger.info(`  Data: ${event.message.data}`);
+
+    const rawProof = await this.publicClient.readContract({
+      address: this.config.base.bridgeContract,
+      abi: BRIDGE_ABI,
+      functionName: "generateProof",
+      args: [event.message.nonce],
+      blockNumber,
+    });
+
+    this.logger.info(`Proof generated at block ${blockNumber}`);
+    this.logger.info(`  Leaf index: ${event.message.nonce}`);
+
+    return { event, rawProof };
   }
 
   async monitorMessageExecution(
