@@ -44,7 +44,7 @@ export class BaseEngine {
     this.logger = opts.logger ?? NOOP_LOGGER;
     this.publicClient = createPublicClient({
       chain: this.config.base.chain,
-      transport: http(),
+      transport: http(this.config.base.rpcUrl),
     }) as PublicClient;
   }
 
