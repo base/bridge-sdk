@@ -68,10 +68,18 @@ export interface SolanaEngineOpts {
   logger?: Logger;
 }
 
+export interface CallParams {
+  to: Address;
+  value: bigint;
+  data: Hex;
+  ty?: CallType;
+}
+
 export interface BridgeSolOpts {
   to: Address;
   amount: bigint;
   payForRelay?: boolean;
+  call?: CallParams;
 }
 
 export interface BridgeSplOpts {
@@ -80,6 +88,7 @@ export interface BridgeSplOpts {
   remoteToken: string;
   amount: bigint;
   payForRelay?: boolean;
+  call?: CallParams;
 }
 
 export interface BridgeWrappedOpts {
@@ -87,12 +96,10 @@ export interface BridgeWrappedOpts {
   mint: string;
   amount: bigint;
   payForRelay?: boolean;
+  call?: CallParams;
 }
 
-export interface BridgeCallOpts {
-  to: Address;
-  value: bigint;
-  data: Hex;
+export interface BridgeCallOpts extends CallParams {
   payForRelay?: boolean;
 }
 
@@ -147,7 +154,7 @@ export class SolanaEngine {
               outgoingMessageSalt: salt,
               to: toBytes(opts.to),
               amount: opts.amount,
-              call: null,
+              call: this.formatCall(opts.call),
             },
             { programAddress: this.config.solana.bridgeProgram }
           ),
@@ -196,7 +203,7 @@ export class SolanaEngine {
               to: toBytes(opts.to),
               remoteToken: remoteTokenBytes,
               amount,
-              call: null,
+              call: this.formatCall(opts.call),
             },
             { programAddress: this.config.solana.bridgeProgram }
           ),
@@ -230,7 +237,7 @@ export class SolanaEngine {
               outgoingMessageSalt: salt,
               to: toBytes(opts.to),
               amount,
-              call: null,
+              call: this.formatCall(opts.call),
             },
             { programAddress: this.config.solana.bridgeProgram }
           ),
@@ -262,7 +269,7 @@ export class SolanaEngine {
               // Arguments
               outgoingMessageSalt: salt,
               call: {
-                ty: CallType.Call,
+                ty: opts.ty ?? CallType.Call,
                 to: toBytes(opts.to),
                 value: opts.value,
                 data: Buffer.from(callData, "hex"),
@@ -344,6 +351,22 @@ export class SolanaEngine {
         ];
       }
     );
+  }
+
+  private formatCall(call?: CallParams) {
+    if (!call) return null;
+
+    // Remove 0x prefix
+    const callData = call.data.startsWith("0x")
+      ? call.data.slice(2)
+      : call.data;
+
+    return {
+      ty: call.ty ?? CallType.Call,
+      to: toBytes(call.to),
+      value: call.value,
+      data: Buffer.from(callData, "hex"),
+    };
   }
 
   private async executeBridgeOp(
