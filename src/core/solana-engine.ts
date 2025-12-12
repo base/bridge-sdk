@@ -521,6 +521,12 @@ export class SolanaEngine {
     // Set the role to readonly for the bridge CPI authority account (if it exists)
     remainingAccounts = remainingAccounts.map((acct) => {
       if (acct.address === bridgeCpiAuthorityPda) {
+        if (
+          acct.role === AccountRole.WRITABLE ||
+          acct.role === AccountRole.WRITABLE_SIGNER
+        ) {
+          return { ...acct, role: AccountRole.WRITABLE };
+        }
         return { ...acct, role: AccountRole.READONLY };
       }
       return acct;
