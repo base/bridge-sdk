@@ -3,6 +3,7 @@ import {
   CallType,
   fetchBridge,
   fetchIncomingMessage,
+  fetchMaybeIncomingMessage,
   fetchOutgoingMessage,
   getBridgeCallInstruction,
   getBridgeSolInstruction,
@@ -405,6 +406,8 @@ export class SolanaEngine {
     rawProof: readonly `0x${string}`[],
     blockNumber: bigint
   ): Promise<Hash> {
+    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+
     const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
     this.logger.debug(`Payer: ${payer.address}`);
 
@@ -433,6 +436,12 @@ export class SolanaEngine {
     this.logger.info(`Nonce: ${event.message.nonce}`);
     this.logger.info(`Sender: ${event.message.sender}`);
     this.logger.info(`Message Hash: ${event.messageHash}`);
+
+    const maybeMessage = await fetchMaybeIncomingMessage(rpc, messageAddress);
+    if (maybeMessage.exists) {
+      this.logger.info("Message already proven on Solana");
+      return event.messageHash;
+    }
 
     // Build prove message instruction
     this.logger.info("Building instruction...");
