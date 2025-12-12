@@ -12,6 +12,7 @@ import { type Logger } from "@/utils/logger";
 import { BaseEngine } from "./base-engine";
 import type { Address, Signature } from "@solana/kit";
 import type { Hex } from "viem";
+import { DEFAULT_RELAY_GAS_LIMIT } from "@/constants";
 
 export interface BridgeSDKOptions {
   config?: BridgeConfigOverrides;
@@ -42,18 +43,38 @@ export class BridgeSDK {
   }
 
   async bridgeSol(opts: BridgeSolOpts): Promise<Address> {
+    if (opts.gasLimit === undefined && opts.payForRelay && opts.call) {
+      const estimatedGas = await this.baseEngine.estimateGasForCall(opts.call);
+      opts.gasLimit = estimatedGas + DEFAULT_RELAY_GAS_LIMIT;
+    }
+
     return await this.solanaEngine.bridgeSol(opts);
   }
 
   async bridgeSpl(opts: BridgeSplOpts): Promise<Address> {
+    if (opts.gasLimit === undefined && opts.payForRelay && opts.call) {
+      const estimatedGas = await this.baseEngine.estimateGasForCall(opts.call);
+      opts.gasLimit = estimatedGas + DEFAULT_RELAY_GAS_LIMIT;
+    }
+
     return await this.solanaEngine.bridgeSpl(opts);
   }
 
   async bridgeWrapped(opts: BridgeWrappedOpts): Promise<Address> {
+    if (opts.gasLimit === undefined && opts.payForRelay && opts.call) {
+      const estimatedGas = await this.baseEngine.estimateGasForCall(opts.call);
+      opts.gasLimit = estimatedGas + DEFAULT_RELAY_GAS_LIMIT;
+    }
+
     return await this.solanaEngine.bridgeWrapped(opts);
   }
 
   async bridgeCall(opts: BridgeCallOpts): Promise<Address> {
+    if (opts.gasLimit === undefined && opts.payForRelay) {
+      const estimatedGas = await this.baseEngine.estimateGasForCall(opts);
+      opts.gasLimit = estimatedGas + DEFAULT_RELAY_GAS_LIMIT;
+    }
+
     return await this.solanaEngine.bridgeCall(opts);
   }
 

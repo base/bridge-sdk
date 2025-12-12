@@ -1,14 +1,22 @@
 import type {
   BridgeBaseToSolanaStateIncomingMessageMessage,
   BridgeBaseToSolanaStateIncomingMessageTransfer,
+  CallType,
 } from "@/clients/ts/src/bridge";
 import type { Address, createSolanaRpc } from "@solana/kit";
-import type { Chain, Address as EvmAddress } from "viem";
+import type { Chain, Address as EvmAddress, Hex } from "viem";
 
 export interface BaseConfig {
   rpcUrl: string;
   bridgeContract: EvmAddress;
   chain: Chain;
+}
+
+export interface CallParams {
+  to: EvmAddress;
+  value: bigint;
+  data: Hex;
+  ty?: CallType;
 }
 
 export interface SolanaConfig {
