@@ -22,38 +22,44 @@ import {
   type Hex,
   type PublicClient,
 } from "viem";
+import { type Logger, NOOP_LOGGER } from "@/utils/logger";
 
 export interface BaseEngineOpts {
   config: BridgeConfig;
+  logger?: Logger;
 }
 
 export class BaseEngine {
   private readonly config: BridgeConfig;
+  private readonly logger: Logger;
+  private readonly publicClient: PublicClient;
 
   constructor(opts: BaseEngineOpts) {
     this.config = opts.config;
+    this.logger = opts.logger ?? NOOP_LOGGER;
+    this.publicClient = createPublicClient({
+      chain: this.config.base.chain,
+      transport: http(),
+    }) as PublicClient;
   }
 
   async monitorMessageExecution(
     outgoingMessageAccount: Account<OutgoingMessage, string>
   ) {
-    console.log("Monitoring message execution...");
-
-    const publicClient = createPublicClient({
-      chain: this.config.base.chain,
-      transport: http(),
-    }) as PublicClient;
+    this.logger.info("Monitoring message execution...");
 
     const { innerHash, outerHash } = this.buildEvmMessage(
       outgoingMessageAccount
     );
-    console.log(`Computed inner hash: ${innerHash}`);
-    console.log(`Computed outer hash: ${outerHash}`);
+    this.logger.debug(`Computed inner hash: ${innerHash}`);
+    this.logger.debug(`Computed outer hash: ${outerHash}`);
 
     while (true) {
-      console.log(`Waiting for automatic relay of message ${outerHash}...`);
+      this.logger.debug(
+        `Waiting for automatic relay of message ${outerHash}...`
+      );
 
-      const isSuccessful = await publicClient.readContract({
+      const isSuccessful = await this.publicClient.readContract({
         address: this.config.base.bridgeContract,
         abi: BRIDGE_ABI,
         functionName: "successes",
@@ -61,7 +67,7 @@ export class BaseEngine {
       });
 
       if (isSuccessful) {
-        console.log("Message relayed successfully.");
+        this.logger.info("Message relayed successfully.");
         return;
       }
 

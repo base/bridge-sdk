@@ -7,8 +7,8 @@ import {
   type BridgeSplOpts,
   type BridgeWrappedOpts,
   type WrapTokenOpts,
-  type Logger,
 } from "./solana-engine";
+import { type Logger } from "@/utils/logger";
 import { BaseEngine } from "./base-engine";
 import type { Address } from "@solana/kit";
 
@@ -42,6 +42,7 @@ export class BridgeSDK {
     });
     this.baseEngine = new BaseEngine({
       config: this.config,
+      logger: options.logger,
     });
   }
 

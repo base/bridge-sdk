@@ -61,13 +61,7 @@ import {
   TOKEN_2022_PROGRAM_ADDRESS,
   DEFAULT_RELAY_GAS_LIMIT,
 } from "@/constants";
-
-export interface Logger {
-  debug(message: string, ...args: any[]): void;
-  info(message: string, ...args: any[]): void;
-  warn(message: string, ...args: any[]): void;
-  error(message: string, ...args: any[]): void;
-}
+import { type Logger, NOOP_LOGGER } from "@/utils/logger";
 
 export interface SolanaEngineOpts {
   config: BridgeConfig;
@@ -119,12 +113,7 @@ export class SolanaEngine {
 
   constructor(opts: SolanaEngineOpts) {
     this.config = opts.config;
-    this.logger = opts.logger ?? {
-      debug: () => {},
-      info: () => {},
-      warn: () => {},
-      error: () => {},
-    };
+    this.logger = opts.logger ?? NOOP_LOGGER;
   }
 
   async getOutgoingMessage(
