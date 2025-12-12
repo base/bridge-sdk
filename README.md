@@ -63,7 +63,7 @@ async function main() {
   // Bridge 0.001 SOL to an EVM address
   const outgoingMessage = await sdk.bridgeSol({
     to: "0x644e3DedB0e4F83Bfcf8F9992964d240224B74dc", // EVM recipient address
-    amount: 0.001,
+    amount: 1_000_000n, // 0.001 SOL (in lamports)
     payForRelay: true, // Optional: Pay for relay execution on Base
   });
 
