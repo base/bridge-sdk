@@ -1,4 +1,8 @@
-import type { Address } from "@solana/kit";
+import type {
+  BridgeBaseToSolanaStateIncomingMessageMessage,
+  BridgeBaseToSolanaStateIncomingMessageTransfer,
+} from "@/clients/ts/src/bridge";
+import type { Address, createSolanaRpc } from "@solana/kit";
 import type { Chain, Address as EvmAddress } from "viem";
 
 export interface BaseConfig {
@@ -29,3 +33,30 @@ export const MessageType = {
   Transfer: 1,
   TransferAndCall: 2,
 } as const;
+
+export type MessageCall = Extract<
+  BridgeBaseToSolanaStateIncomingMessageMessage,
+  { __kind: "Call" }
+>;
+
+export type MessageTransfer = Extract<
+  BridgeBaseToSolanaStateIncomingMessageMessage,
+  { __kind: "Transfer" }
+>;
+
+export type Rpc = ReturnType<typeof createSolanaRpc>;
+
+export type MessageTransferSol = Extract<
+  BridgeBaseToSolanaStateIncomingMessageTransfer,
+  { __kind: "Sol" }
+>;
+
+export type MessageTransferSpl = Extract<
+  BridgeBaseToSolanaStateIncomingMessageTransfer,
+  { __kind: "Spl" }
+>;
+
+export type MessageTransferWrappedToken = Extract<
+  BridgeBaseToSolanaStateIncomingMessageTransfer,
+  { __kind: "WrappedToken" }
+>;
