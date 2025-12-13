@@ -9,7 +9,11 @@ import {
   type WrapTokenOpts,
 } from "./solana-engine";
 import { type Logger } from "@/utils/logger";
-import { BaseEngine, type BaseBridgeCallOpts } from "./base-engine";
+import {
+  BaseEngine,
+  type BaseBridgeCallOpts,
+  type BaseBridgeTokenOpts,
+} from "./base-engine";
 import type { Address, Signature } from "@solana/kit";
 import type { Hash, Hex } from "viem";
 import { DEFAULT_RELAY_GAS_LIMIT } from "@/constants";
@@ -80,6 +84,10 @@ export class BridgeSDK {
 
   async bridgeCallFromBase(opts: BaseBridgeCallOpts): Promise<Hash> {
     return await this.baseEngine.bridgeCall(opts);
+  }
+
+  async bridgeTokenFromBase(opts: BaseBridgeTokenOpts): Promise<Hash> {
+    return await this.baseEngine.bridgeToken(opts);
   }
 
   async wrapToken(opts: WrapTokenOpts): Promise<Address> {
