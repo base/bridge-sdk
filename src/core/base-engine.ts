@@ -1,7 +1,9 @@
-import type {
-  Call,
-  fetchOutgoingMessage,
-  OutgoingMessage,
+import {
+  getIxAccountEncoder,
+  type Call,
+  type Ix,
+  type fetchOutgoingMessage,
+  type OutgoingMessage,
 } from "@/clients/ts/src/bridge";
 import { BRIDGE_ABI } from "@/interfaces/abis/bridge.abi";
 import { MessageType, type BridgeConfig, type CallParams } from "@/types";
@@ -14,6 +16,7 @@ import {
 import { sleep } from "@/utils/time";
 import {
   createPublicClient,
+  createWalletClient,
   decodeEventLog,
   encodeAbiParameters,
   http,
@@ -23,9 +26,10 @@ import {
   type Hash,
   type Hex,
   type PublicClient,
+  type WalletClient,
 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import {
-  DEFAULT_EVM_GAS_LIMIT,
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
 } from "@/constants";
@@ -36,10 +40,15 @@ export interface BaseEngineOpts {
   logger?: Logger;
 }
 
+export interface BaseBridgeCallOpts {
+  ixs: Ix[];
+}
+
 export class BaseEngine {
   private readonly config: BridgeConfig;
   private readonly logger: Logger;
   private readonly publicClient: PublicClient;
+  private readonly walletClient: WalletClient | undefined;
 
   constructor(opts: BaseEngineOpts) {
     this.config = opts.config;
@@ -48,6 +57,13 @@ export class BaseEngine {
       chain: this.config.base.chain,
       transport: http(this.config.base.rpcUrl),
     }) as PublicClient;
+
+    if (this.config.base.privateKey) {
+      this.walletClient = createWalletClient({
+        chain: this.config.base.chain,
+        transport: http(this.config.base.rpcUrl),
+      });
+    }
   }
 
   async estimateGasForCall(call: CallParams): Promise<bigint> {
@@ -57,6 +73,35 @@ export class BaseEngine {
       data: call.data,
       value: call.value,
     });
+  }
+
+  async bridgeCall(opts: BaseBridgeCallOpts): Promise<Hash> {
+    if (!this.walletClient || !this.config.base.privateKey) {
+      throw new Error(
+        "Base wallet client not initialized (missing privateKey)"
+      );
+    }
+
+    const account = privateKeyToAccount(this.config.base.privateKey);
+
+    const formattedIxs = opts.ixs.map((ix) => ({
+      programId: this.bytes32FromPubkey(ix.programId),
+      serializedAccounts: ix.accounts.map((acc) =>
+        toHex(new Uint8Array(getIxAccountEncoder().encode(acc)))
+      ),
+      data: toHex(new Uint8Array(ix.data)),
+    }));
+
+    const { request } = await this.publicClient.simulateContract({
+      address: this.config.base.bridgeContract,
+      abi: BRIDGE_ABI,
+      functionName: "bridgeCall",
+      args: [formattedIxs],
+      account,
+      chain: this.config.base.chain,
+    });
+
+    return await this.walletClient.writeContract(request);
   }
 
   async generateProof(transactionHash: Hash, blockNumber: bigint) {
@@ -193,16 +238,7 @@ export class BaseEngine {
       )
     );
 
-    const evmMessage = {
-      outgoingMessagePubkey: this.bytes32FromPubkey(outgoing.address),
-      gasLimit: DEFAULT_EVM_GAS_LIMIT,
-      nonce,
-      sender: senderBytes32,
-      ty,
-      data,
-    };
-
-    return { innerHash, outerHash, evmMessage };
+    return { innerHash, outerHash };
   }
 
   private bytes32FromPubkey(pubkey: Address): Hex {

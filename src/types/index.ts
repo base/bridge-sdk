@@ -10,6 +10,7 @@ export interface BaseConfig {
   rpcUrl: string;
   bridgeContract: EvmAddress;
   chain: Chain;
+  privateKey?: Hex;
 }
 
 export interface CallParams {
