@@ -30,10 +30,12 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
+  DEFAULT_EVM_GAS_LIMIT,
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
 } from "@/constants";
 import { type Logger, NOOP_LOGGER } from "@/utils/logger";
+import { BRIDGE_VALIDATOR_ABI } from "@/interfaces/abis/bridge-validator.abi";
 
 export interface BaseEngineOpts {
   config: BridgeConfig;
@@ -59,6 +61,7 @@ export class BaseEngine {
   private readonly logger: Logger;
   private readonly publicClient: PublicClient;
   private readonly walletClient: WalletClient | undefined;
+  private validatorAddressPromise: Promise<Hex> | undefined;
 
   constructor(opts: BaseEngineOpts) {
     this.config = opts.config;
@@ -74,6 +77,17 @@ export class BaseEngine {
         transport: http(this.config.base.rpcUrl),
       });
     }
+  }
+
+  private async getValidatorAddress(): Promise<Hex> {
+    if (!this.validatorAddressPromise) {
+      this.validatorAddressPromise = this.publicClient.readContract({
+        address: this.config.base.bridgeContract,
+        abi: BRIDGE_ABI,
+        functionName: "BRIDGE_VALIDATOR",
+      });
+    }
+    return this.validatorAddressPromise;
   }
 
   async estimateGasForCall(call: CallParams): Promise<bigint> {
@@ -249,6 +263,139 @@ export class BaseEngine {
     throw new Error(`Monitor message execution timed out after ${timeoutMs}ms`);
   }
 
+  async executeMessage(
+    outgoingMessageAccount: Account<OutgoingMessage, string>,
+    options: {
+      gasLimit?: bigint;
+      timeoutMs?: number;
+      pollIntervalMs?: number;
+    } = {}
+  ): Promise<Hash> {
+    if (!this.walletClient || !this.config.base.privateKey) {
+      throw new Error(
+        "Base wallet client not initialized (missing privateKey)"
+      );
+    }
+
+    const account = privateKeyToAccount(this.config.base.privateKey);
+
+    // Compute inner message hash as Base contracts do
+    const { innerHash, outerHash, evmMessage } = this.buildEvmMessage(
+      outgoingMessageAccount,
+      options.gasLimit
+    );
+    this.logger.debug(`Computed inner hash: ${innerHash}`);
+    this.logger.debug(`Computed outer hash: ${outerHash}`);
+
+    // Batch all on-chain reads into a single multicall for performance
+    const [successesResult, failuresResult, messageHashResult] =
+      await this.publicClient.multicall({
+        contracts: [
+          {
+            address: this.config.base.bridgeContract,
+            abi: BRIDGE_ABI,
+            functionName: "successes",
+            args: [outerHash],
+          },
+          {
+            address: this.config.base.bridgeContract,
+            abi: BRIDGE_ABI,
+            functionName: "failures",
+            args: [outerHash],
+          },
+          {
+            address: this.config.base.bridgeContract,
+            abi: BRIDGE_ABI,
+            functionName: "getMessageHash",
+            args: [evmMessage],
+          },
+        ],
+        allowFailure: false,
+      });
+
+    // Check if message was already executed
+    if (successesResult) {
+      this.logger.info("Message already executed on Base");
+      return outerHash;
+    }
+
+    // Check if message previously failed
+    if (failuresResult) {
+      throw new Error(
+        `Message previously failed execution on Base. Hash: ${outerHash}`
+      );
+    }
+
+    // Assert Bridge.getMessageHash(message) equals expected hash
+    if (this.sanitizeHex(messageHashResult) !== this.sanitizeHex(outerHash)) {
+      throw new Error(
+        `Hash mismatch: getMessageHash != expected. got=${messageHashResult}, expected=${outerHash}`
+      );
+    }
+
+    // Wait for validator approval of this exact message hash
+    await this.waitForApproval(
+      outerHash,
+      options.timeoutMs,
+      options.pollIntervalMs
+    );
+
+    // Execute the message on Base
+    this.logger.info("Executing Bridge.relayMessages on Base...");
+    const tx = await this.walletClient.writeContract({
+      address: this.config.base.bridgeContract,
+      abi: BRIDGE_ABI,
+      functionName: "relayMessages",
+      args: [[evmMessage]],
+      account,
+      chain: this.config.base.chain,
+    });
+    const explorerUrl =
+      this.config.base.chain.blockExplorers?.default.url ??
+      "https://basescan.org";
+    this.logger.info(`Message executed on Base: ${explorerUrl}/tx/${tx}`);
+
+    return tx;
+  }
+
+  private async waitForApproval(
+    messageHash: Hex,
+    timeoutMs = DEFAULT_MONITOR_TIMEOUT_MS,
+    intervalMs = DEFAULT_MONITOR_POLL_INTERVAL_MS
+  ) {
+    const validatorAddress = await this.getValidatorAddress();
+
+    const start = Date.now();
+    let currentInterval = intervalMs;
+    const maxInterval = 30_000;
+
+    while (Date.now() - start <= timeoutMs) {
+      this.logger.debug(`Waiting for approval of message hash: ${messageHash}`);
+
+      const approved = await this.publicClient.readContract({
+        address: validatorAddress,
+        abi: BRIDGE_VALIDATOR_ABI,
+        functionName: "validMessages",
+        args: [messageHash],
+      });
+
+      if (approved) {
+        this.logger.info("Message approved by BridgeValidator.");
+        return;
+      }
+
+      await sleep(currentInterval);
+      currentInterval = Math.min(
+        Math.floor(currentInterval * 1.5),
+        maxInterval
+      );
+    }
+
+    throw new Error(
+      `Timed out waiting for BridgeValidator approval after ${timeoutMs}ms`
+    );
+  }
+
   private formatIxs(ixs: Ix[]) {
     return ixs.map((ix) => ({
       programId: this.bytes32FromPubkey(ix.programId),
@@ -260,7 +407,8 @@ export class BaseEngine {
   }
 
   private buildEvmMessage(
-    outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>
+    outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
+    gasLimit: bigint = DEFAULT_EVM_GAS_LIMIT
   ) {
     const nonce = BigInt(outgoing.data.nonce);
     const senderBytes32 = this.bytes32FromPubkey(outgoing.data.sender);
@@ -282,7 +430,16 @@ export class BaseEngine {
       )
     );
 
-    return { innerHash, outerHash };
+    const evmMessage = {
+      outgoingMessagePubkey: this.bytes32FromPubkey(outgoing.address),
+      gasLimit,
+      nonce,
+      sender: senderBytes32,
+      ty,
+      data,
+    };
+
+    return { innerHash, outerHash, evmMessage };
   }
 
   private bytes32FromPubkey(pubkey: Address): Hex {
@@ -416,5 +573,9 @@ export class BaseEngine {
       value: BigInt(call.value),
       data: toHex(new Uint8Array(call.data)),
     };
+  }
+
+  private sanitizeHex(h: string): string {
+    return h.toLowerCase();
   }
 }
