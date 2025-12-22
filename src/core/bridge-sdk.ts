@@ -126,6 +126,18 @@ export class BridgeSDK {
     return await this.solanaEngine.handleExecuteMessage(msgHash);
   }
 
+  async proveAndExecuteOnSolana(transactionHash: Hash): Promise<{
+    proveSignature?: Signature;
+    executeSignature: Signature;
+    messageHash: Hash;
+  }> {
+    const { signature: proveSignature, messageHash } = await this.proveOnSolana(
+      transactionHash
+    );
+    const executeSignature = await this.executeOnSolana(messageHash);
+    return { proveSignature, executeSignature, messageHash };
+  }
+
   async executeOnBase(
     outgoingMessagePubkey: Address,
     options: {
