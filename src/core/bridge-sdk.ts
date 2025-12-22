@@ -125,6 +125,23 @@ export class BridgeSDK {
   async executeOnSolana(msgHash: Hex): Promise<Signature> {
     return await this.solanaEngine.handleExecuteMessage(msgHash);
   }
+
+  async executeOnBase(
+    outgoingMessagePubkey: Address,
+    options: {
+      timeoutMs?: number;
+      pollIntervalMs?: number;
+      gasLimit?: bigint;
+    } = {}
+  ): Promise<Hash> {
+    return await this.baseEngine.executeMessage(
+      await this.solanaEngine.getOutgoingMessage(
+        outgoingMessagePubkey,
+        options
+      ),
+      options
+    );
+  }
 }
 
 export const createBridgeSDK = (options?: BridgeSDKOptions) =>
