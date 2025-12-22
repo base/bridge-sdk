@@ -44,6 +44,16 @@ export interface BaseBridgeCallOpts {
   ixs: Ix[];
 }
 
+export interface BaseBridgeTokenOpts {
+  transfer: {
+    localToken: Hex;
+    remoteToken: Address;
+    to: Address;
+    amount: bigint;
+  };
+  ixs: Ix[];
+}
+
 export class BaseEngine {
   private readonly config: BridgeConfig;
   private readonly logger: Logger;
@@ -84,19 +94,43 @@ export class BaseEngine {
 
     const account = privateKeyToAccount(this.config.base.privateKey);
 
-    const formattedIxs = opts.ixs.map((ix) => ({
-      programId: this.bytes32FromPubkey(ix.programId),
-      serializedAccounts: ix.accounts.map((acc) =>
-        toHex(new Uint8Array(getIxAccountEncoder().encode(acc)))
-      ),
-      data: toHex(new Uint8Array(ix.data)),
-    }));
+    const formattedIxs = this.formatIxs(opts.ixs);
 
     const { request } = await this.publicClient.simulateContract({
       address: this.config.base.bridgeContract,
       abi: BRIDGE_ABI,
       functionName: "bridgeCall",
       args: [formattedIxs],
+      account,
+      chain: this.config.base.chain,
+    });
+
+    return await this.walletClient.writeContract(request);
+  }
+
+  async bridgeToken(opts: BaseBridgeTokenOpts): Promise<Hash> {
+    if (!this.walletClient || !this.config.base.privateKey) {
+      throw new Error(
+        "Base wallet client not initialized (missing privateKey)"
+      );
+    }
+
+    const account = privateKeyToAccount(this.config.base.privateKey);
+
+    const formattedIxs = this.formatIxs(opts.ixs);
+
+    const transferStruct = {
+      localToken: opts.transfer.localToken,
+      remoteToken: this.bytes32FromPubkey(opts.transfer.remoteToken),
+      to: this.bytes32FromPubkey(opts.transfer.to),
+      remoteAmount: opts.transfer.amount,
+    };
+
+    const { request } = await this.publicClient.simulateContract({
+      address: this.config.base.bridgeContract,
+      abi: BRIDGE_ABI,
+      functionName: "bridgeToken",
+      args: [transferStruct, formattedIxs],
       account,
       chain: this.config.base.chain,
     });
@@ -213,6 +247,16 @@ export class BaseEngine {
     }
 
     throw new Error(`Monitor message execution timed out after ${timeoutMs}ms`);
+  }
+
+  private formatIxs(ixs: Ix[]) {
+    return ixs.map((ix) => ({
+      programId: this.bytes32FromPubkey(ix.programId),
+      serializedAccounts: ix.accounts.map((acc) =>
+        toHex(new Uint8Array(getIxAccountEncoder().encode(acc)))
+      ),
+      data: toHex(new Uint8Array(ix.data)),
+    }));
   }
 
   private buildEvmMessage(
