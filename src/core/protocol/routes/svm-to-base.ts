@@ -4,8 +4,8 @@ import type { Hex, Hash } from "viem";
 import {
   BridgeUnsupportedActionError,
   BridgeUnsupportedStepError,
-} from "../../../../core/errors";
-import { pollingMonitor } from "../../../../core/monitor/polling";
+} from "../../errors";
+import { pollingMonitor } from "../../monitor/polling";
 import type {
   BridgeOperation,
   BridgeRequest,
@@ -20,13 +20,13 @@ import type {
   RouteAdapter,
   RouteCapabilities,
   StatusOptions,
-} from "../../../../core/types";
-import type { EvmChainAdapter } from "../../../chains/evm/types";
-import type { SolanaChainAdapter } from "../../../chains/solana/types";
-import { SolanaEngine } from "../legacy/solana-engine";
-import { BaseEngine } from "../legacy/base-engine";
-import type { BridgeConfig } from "../legacy/types";
-import { BRIDGE_ABI } from "../../../../interfaces/abis/bridge.abi";
+} from "../../types";
+import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
+import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
+import { SolanaEngine } from "../engines/solana-engine";
+import { BaseEngine } from "../engines/base-engine";
+import type { EngineConfig } from "../engines/types";
+import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import { buildEvmIncomingMessage } from "../identity";
 
 /**
@@ -35,7 +35,7 @@ import { buildEvmIncomingMessage } from "../identity";
  * Note: We keep the underlying chain IDs as `solana:*` for now, but route naming
  * uses the more general "SVM" terminology.
  */
-export class BaseMarketsSvmToBaseRouteAdapter implements RouteAdapter {
+export class SvmToBaseRouteAdapter implements RouteAdapter {
   readonly route: BridgeRoute;
 
   private readonly solana: SolanaChainAdapter;
@@ -65,7 +65,7 @@ export class BaseMarketsSvmToBaseRouteAdapter implements RouteAdapter {
     this.evmDeployment = args.evmDeployment;
     this.tokenMapping = args.tokenMapping;
 
-    const legacyConfig: BridgeConfig = {
+    const engineConfig: EngineConfig = {
       solana: {
         rpcUrl: this.solana.rpcUrl,
         payerKp: this.solana.payerKeypairPath,
@@ -80,8 +80,8 @@ export class BaseMarketsSvmToBaseRouteAdapter implements RouteAdapter {
       },
     };
 
-    this.solanaEngine = new SolanaEngine({ config: legacyConfig });
-    this.baseEngine = new BaseEngine({ config: legacyConfig });
+    this.solanaEngine = new SolanaEngine({ config: engineConfig });
+    this.baseEngine = new BaseEngine({ config: engineConfig });
   }
 
   async capabilities(): Promise<RouteCapabilities> {

@@ -2,7 +2,7 @@ import type {
   BridgeBaseToSolanaStateIncomingMessageMessage,
   BridgeBaseToSolanaStateIncomingMessageTransfer,
   CallType,
-} from "../../../../clients/ts/src/bridge";
+} from "../../../clients/ts/src/bridge";
 import type { Address, createSolanaRpc } from "@solana/kit";
 import type { Chain, Address as EvmAddress, Hex } from "viem";
 
@@ -27,7 +27,7 @@ export interface SolanaConfig {
   relayerProgram: Address;
 }
 
-export interface BridgeConfig {
+export interface EngineConfig {
   solana: SolanaConfig;
   base: BaseConfig;
 }
