@@ -1,4 +1,5 @@
 import { existsSync } from "fs";
+import { readFile } from "node:fs/promises";
 import {
   CallType,
   fetchBridge,
@@ -15,9 +16,9 @@ import {
   type Ix,
   type OutgoingMessage,
   type WrapTokenInstructionDataArgs,
-} from "../../../../clients/ts/src/bridge";
+} from "../../../clients/ts/src/bridge";
 import type {
-  BridgeConfig,
+  EngineConfig,
   MessageCall,
   MessageTransfer,
   MessageTransferSol,
@@ -25,7 +26,7 @@ import type {
   MessageTransferWrappedToken,
   Rpc,
 } from "./types";
-import { getIdlConstant } from "../../../../utils/bridge-idl.constants";
+import { getIdlConstant } from "../../../utils/bridge-idl.constants";
 import {
   addSignersToTransactionMessage,
   appendTransactionMessageInstructions,
@@ -58,21 +59,14 @@ import {
   getBase58Codec,
   type Signature,
 } from "@solana/kit";
-import {
-  keccak256,
-  toBytes,
-  toHex,
-  type Address,
-  type Hash,
-  type Hex,
-} from "viem";
+import { keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
 import { homedir } from "os";
 import { join } from "path";
 import {
   fetchCfg,
   getPayForRelayInstruction,
-} from "../../../../clients/ts/src/base-relayer";
-import { getRelayerIdlConstant } from "../../../../utils/relayer-idl.constants";
+} from "../../../clients/ts/src/base-relayer";
+import { getRelayerIdlConstant } from "../../../utils/relayer-idl.constants";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
   fetchMaybeMint,
@@ -87,11 +81,11 @@ import {
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
 } from "./constants";
-import { sleep } from "../../../../utils/time";
+import { sleep } from "../../../utils/time";
 import type { CallParams } from "./types";
 
 export interface SolanaEngineOpts {
-  config: BridgeConfig;
+  config: EngineConfig;
 }
 
 export interface BridgeSolOpts {
@@ -141,7 +135,7 @@ export interface WrapTokenOpts {
 }
 
 export class SolanaEngine {
-  private readonly config: BridgeConfig;
+  private readonly config: EngineConfig;
   private keypairSignerCache = new Map<string, KeyPairSigner>();
   private signer: KeyPairSigner | null = null;
 
@@ -804,7 +798,8 @@ export class SolanaEngine {
       throw new Error(`Keypair not found at: ${keypairPath}`);
     }
 
-    const keypairBytes = new Uint8Array(await Bun.file(keypairPath).json());
+    const keypairJson = await readFile(keypairPath, "utf8");
+    const keypairBytes = new Uint8Array(JSON.parse(keypairJson));
     const keypair = await createKeyPairFromBytes(keypairBytes);
     const signer = await createSignerFromKeyPair(keypair);
     this.keypairSignerCache.set(keypairPath, signer);

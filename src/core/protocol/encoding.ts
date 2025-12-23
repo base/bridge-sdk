@@ -8,7 +8,7 @@ import type {
   BridgeSolanaToBaseStateOutgoingMessageMessage,
   Call,
   fetchOutgoingMessage,
-} from "../../../clients/ts/src/bridge";
+} from "../../clients/ts/src/bridge";
 
 export const BASE_MARKETS_MESSAGE_TYPE = {
   Call: 0,

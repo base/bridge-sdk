@@ -1,8 +1,6 @@
 import { createBridgeClient } from "../src";
 import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
 import { makeEvmAdapter } from "../src/adapters/chains/evm/adapter";
-import { baseMarketsProtocol } from "../src/adapters/protocols/base-markets/protocol";
-import { address as solAddress } from "@solana/kit";
 
 // Example: Base (EVM) -> Solana token transfer (requires tokenMappings for ERC20->mint)
 async function main() {
@@ -19,34 +17,15 @@ async function main() {
         chain: { id: "solana:mainnet" },
       }),
     },
-    protocols: [
-      baseMarketsProtocol({
-        deployments: {
-          solana: {
-            "solana:mainnet": {
-              bridgeProgram: solAddress(
-                "HNCne2FkVaNghhjKXapxJzPaBvAKDG1Ge3gqhZyfVWLM"
-              ),
-              relayerProgram: solAddress(
-                "g1et5VenhfJHJwsdJsDbxWZuotD5H4iELNG61kS4fb9"
-              ),
-            },
-          },
-          evm: {
-            "eip155:8453": {
-              bridgeContract: "0x3eff766C76a1be2Ce1aCF2B69c78bCae257D5188",
-            },
-          },
+    bridgeConfig: {
+      tokenMappings: {
+        "eip155:8453->solana:mainnet": {
+          // ERC20 -> Solana mint (base58)
+          "0x0000000000000000000000000000000000000000":
+            "So11111111111111111111111111111111111111112",
         },
-        tokenMappings: {
-          "eip155:8453->solana:mainnet": {
-            // ERC20 -> Solana mint (base58)
-            "0x0000000000000000000000000000000000000000":
-              "So11111111111111111111111111111111111111112",
-          },
-        },
-      }),
-    ],
+      },
+    },
   });
 
   const op = await client.transfer({

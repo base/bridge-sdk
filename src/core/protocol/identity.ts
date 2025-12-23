@@ -1,5 +1,5 @@
 import { encodeAbiParameters, keccak256, type Hex } from "viem";
-import type { fetchOutgoingMessage } from "../../../clients/ts/src/bridge";
+import type { fetchOutgoingMessage } from "../../clients/ts/src/bridge";
 import {
   bytes32FromSolanaPubkey,
   encodeOutgoingMessagePayload,
