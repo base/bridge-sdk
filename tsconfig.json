@@ -24,6 +24,6 @@
     "exactOptionalPropertyTypes": false,
     "useUnknownInCatchVariables": true
   },
-  "include": ["src", "tests", "index.ts"],
+  "include": ["src", "tests", "examples", "index.ts"],
   "exclude": ["dist", "node_modules"]
 }

@@ -3,22 +3,21 @@
   "version": "0.1.0",
   "description": "Composable cross-chain bridge SDK for Base Markets integrations.",
   "type": "module",
-  "module": "./src/index.ts",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "module": "./dist/index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts"
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "bun run clean && bun build ./src/index.ts --outdir dist --target node --format esm --external bun",
+    "build": "bun run clean && bun run types && bun build ./src/index.ts --outdir dist --target node --format esm --external bun",
     "types": "tsc -p tsconfig.build.json",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

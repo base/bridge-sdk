@@ -2,7 +2,7 @@ import type {
   BridgeBaseToSolanaStateIncomingMessageMessage,
   BridgeBaseToSolanaStateIncomingMessageTransfer,
   CallType,
-} from "@/clients/ts/src/bridge";
+} from "../../../../clients/ts/src/bridge";
 import type { Address, createSolanaRpc } from "@solana/kit";
 import type { Chain, Address as EvmAddress, Hex } from "viem";
 
@@ -30,11 +30,6 @@ export interface SolanaConfig {
 export interface BridgeConfig {
   solana: SolanaConfig;
   base: BaseConfig;
-}
-
-export interface BridgeConfigOverrides {
-  solana?: Partial<SolanaConfig>;
-  base?: Partial<BaseConfig>;
 }
 
 export const MessageType = {
