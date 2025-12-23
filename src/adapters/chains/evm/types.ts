@@ -5,11 +5,34 @@ export type EvmWalletConfig =
   | { type: "privateKey"; key: Hex }
   | { type: "none" };
 
-export interface EvmAdapterConfig {
+export type BridgeEvmChainRef = {
+  id: `eip155:${number}`;
   chainId: number;
-  rpcUrl: string;
-  wallet?: EvmWalletConfig;
-}
+  viem: Chain;
+};
+
+export type EvmAdapterConfig =
+  | {
+      /** EVM chain id (e.g. 8453). */
+      chainId: number;
+      chain?: undefined;
+      rpcUrl: string;
+      wallet?: EvmWalletConfig;
+    }
+  | {
+      /** Bridge SDK chain object (e.g. `import { base } from "@base-markets/bridge-sdk/chains"`). */
+      chain: BridgeEvmChainRef;
+      chainId?: undefined;
+      rpcUrl: string;
+      wallet?: EvmWalletConfig;
+    }
+  | {
+      /** viem chain object (e.g. `import { base } from "viem/chains"`). */
+      chain: Chain;
+      chainId?: undefined;
+      rpcUrl: string;
+      wallet?: EvmWalletConfig;
+    };
 
 export interface EvmChainAdapter extends ChainAdapter {
   readonly chain: ChainRef;

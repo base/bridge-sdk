@@ -1,4 +1,5 @@
 import { createBridgeClient } from "../src";
+import { base, solanaMainnet } from "../src/chains";
 import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
 import { makeEvmAdapter } from "../src/adapters/chains/evm/adapter";
 
@@ -6,13 +7,13 @@ import { makeEvmAdapter } from "../src/adapters/chains/evm/adapter";
 async function main() {
   const client = createBridgeClient({
     chains: {
-      "solana:mainnet": await makeSolanaAdapter({
+      solana: await makeSolanaAdapter({
         rpcUrl: "https://api.mainnet-beta.solana.com",
         payer: { type: "keypairPath", path: "~/.config/solana/id.json" },
-        chain: { id: "solana:mainnet" },
+        chain: solanaMainnet,
       }),
-      "eip155:8453": makeEvmAdapter({
-        chainId: 8453,
+      base: makeEvmAdapter({
+        chain: base,
         rpcUrl: "https://mainnet.base.org",
         wallet: { type: "none" },
       }),
@@ -20,7 +21,10 @@ async function main() {
   });
 
   const op = await client.transfer({
-    route: { sourceChain: "solana:mainnet", destinationChain: "eip155:8453" },
+    route: {
+      sourceChain: solanaMainnet.id,
+      destinationChain: base.id,
+    },
     asset: { kind: "native" },
     amount: 1_000_000n,
     recipient: "0x644e3DedB0e4F83Bfcf8F9992964d240224B74dc",

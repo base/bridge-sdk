@@ -22,9 +22,22 @@ function makeViemChain(chainId: number): Chain {
   } as const as Chain;
 }
 
+function hasViemChain(
+  config: EvmAdapterConfig
+): config is Extract<EvmAdapterConfig, { chain: unknown }> {
+  return (config as any).chain != null;
+}
+
 export function makeEvmAdapter(config: EvmAdapterConfig): EvmChainAdapter {
-  const chain: ChainRef = { id: `eip155:${config.chainId}` };
-  const viemChain = makeViemChain(config.chainId);
+  const chainId = hasViemChain(config)
+    ? typeof (config.chain as any).chainId === "number"
+      ? (config.chain as any).chainId
+      : (config.chain as any).id
+    : config.chainId;
+  const chain: ChainRef = { id: `eip155:${chainId}` };
+  const viemChain = hasViemChain(config)
+    ? (config.chain as any).viem ?? config.chain
+    : makeViemChain(chainId);
 
   const publicClient = createPublicClient({
     chain: viemChain,
@@ -50,7 +63,7 @@ export function makeEvmAdapter(config: EvmAdapterConfig): EvmChainAdapter {
   return {
     kind: "evm",
     chain,
-    chainId: config.chainId,
+    chainId,
     rpcUrl: config.rpcUrl,
     viemChain,
     publicClient,

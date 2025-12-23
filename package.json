@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/types/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./chains": {
+      "types": "./dist/types/chains/index.d.ts",
+      "import": "./dist/chains/index.js"
     }
   },
   "files": [
@@ -17,7 +21,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "bun run clean && bun run types && bun build ./src/index.ts --outdir dist --target node --format esm --external bun",
+    "build": "bun run clean && bun run types && bun build ./src/index.ts --outdir dist --target node --format esm --external bun && bun build ./src/chains/index.ts --outdir dist/chains --target node --format esm --external bun",
     "types": "tsc -p tsconfig.build.json",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

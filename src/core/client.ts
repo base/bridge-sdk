@@ -29,7 +29,7 @@ import type {
 
 export interface BridgeClientConfig {
   /** Registered chains and their adapters. */
-  chains: Record<ChainId, ChainAdapter>;
+  chains: Record<string, ChainAdapter>;
 
   /**
    * Bridge-specific configuration.
@@ -214,6 +214,17 @@ class DefaultBridgeClient implements BridgeClient {
 }
 
 export function createBridgeClient(config: BridgeClientConfig): BridgeClient {
+  const chains: Record<ChainId, ChainAdapter> = {};
+  for (const adapter of Object.values(config.chains)) {
+    const id = adapter.chain.id;
+    if (chains[id]) {
+      throw new Error(
+        `Duplicate chain adapter registered for ${id}. Ensure each adapter has a unique chain id.`
+      );
+    }
+    chains[id] = adapter;
+  }
+
   const deployments = mergeBridgeDeployments(config.bridgeConfig?.deployments);
   const bridge: BridgeConfig = {
     deployments,
@@ -222,6 +233,7 @@ export function createBridgeClient(config: BridgeClientConfig): BridgeClient {
 
   return new DefaultBridgeClient({
     ...config,
+    chains,
     bridge,
   });
 }
