@@ -4,16 +4,16 @@ import {
   type Ix,
   type fetchOutgoingMessage,
   type OutgoingMessage,
-} from "@/clients/ts/src/bridge";
-import { BRIDGE_ABI } from "@/interfaces/abis/bridge.abi";
-import { MessageType, type BridgeConfig, type CallParams } from "@/types";
+} from "../../../../clients/ts/src/bridge";
+import { BRIDGE_ABI } from "../../../../interfaces/abis/bridge.abi";
+import { MessageType, type BridgeConfig, type CallParams } from "./types";
 import {
   getBase58Codec,
   getBase58Encoder,
   type Account,
   type Address,
 } from "@solana/kit";
-import { sleep } from "@/utils/time";
+import { sleep } from "../../../../utils/time";
 import {
   createPublicClient,
   createWalletClient,
@@ -33,9 +33,9 @@ import {
   DEFAULT_EVM_GAS_LIMIT,
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
-} from "@/constants";
-import { type Logger, NOOP_LOGGER } from "@/utils/logger";
-import { BRIDGE_VALIDATOR_ABI } from "@/interfaces/abis/bridge-validator.abi";
+} from "./constants";
+import { type Logger, NOOP_LOGGER } from "../../../../utils/logger";
+import { BRIDGE_VALIDATOR_ABI } from "../../../../interfaces/abis/bridge-validator.abi";
 
 export interface BaseEngineOpts {
   config: BridgeConfig;
@@ -107,7 +107,6 @@ export class BaseEngine {
     }
 
     const account = privateKeyToAccount(this.config.base.privateKey);
-
     const formattedIxs = this.formatIxs(opts.ixs);
 
     const { request } = await this.publicClient.simulateContract({
@@ -130,7 +129,6 @@ export class BaseEngine {
     }
 
     const account = privateKeyToAccount(this.config.base.privateKey);
-
     const formattedIxs = this.formatIxs(opts.ixs);
 
     const transferStruct = {
@@ -184,30 +182,20 @@ export class BaseEngine {
                 message: decodedLog.args.message,
               }
             : null;
-        } catch (error) {
+        } catch {
           return null;
         }
       })
       .filter((event) => event !== null);
 
-    this.logger.info(`Found ${msgInitEvents.length} MessageInitiated event(s)`);
-
     if (msgInitEvents.length === 0) {
       throw new Error("No MessageInitiated event found in transaction");
     }
-
     if (msgInitEvents.length > 1) {
       throw new Error("Multiple MessageInitiated events found (unsupported)");
     }
 
     const event = msgInitEvents[0]!;
-
-    this.logger.info("Message Details:");
-    this.logger.info(`  Hash: ${event.messageHash}`);
-    this.logger.info(`  MMR Root: ${event.mmrRoot}`);
-    this.logger.info(`  Nonce: ${event.message.nonce}`);
-    this.logger.info(`  Sender: ${event.message.sender}`);
-    this.logger.info(`  Data: ${event.message.data}`);
 
     const rawProof = await this.publicClient.readContract({
       address: this.config.base.bridgeContract,
@@ -216,9 +204,6 @@ export class BaseEngine {
       args: [event.message.nonce],
       blockNumber,
     });
-
-    this.logger.info(`Proof generated at block ${blockNumber}`);
-    this.logger.info(`  Leaf index: ${event.message.nonce}`);
 
     return { event, rawProof };
   }
@@ -232,19 +217,9 @@ export class BaseEngine {
       options.pollIntervalMs ?? DEFAULT_MONITOR_POLL_INTERVAL_MS;
     const startTime = Date.now();
 
-    this.logger.info("Monitoring message execution...");
-
-    const { innerHash, outerHash } = this.buildEvmMessage(
-      outgoingMessageAccount
-    );
-    this.logger.debug(`Computed inner hash: ${innerHash}`);
-    this.logger.debug(`Computed outer hash: ${outerHash}`);
+    const { outerHash } = this.buildEvmMessage(outgoingMessageAccount);
 
     while (Date.now() - startTime <= timeoutMs) {
-      this.logger.debug(
-        `Waiting for automatic relay of message ${outerHash}...`
-      );
-
       const isSuccessful = await this.publicClient.readContract({
         address: this.config.base.bridgeContract,
         abi: BRIDGE_ABI,
@@ -253,7 +228,6 @@ export class BaseEngine {
       });
 
       if (isSuccessful) {
-        this.logger.info("Message relayed successfully.");
         return;
       }
 
@@ -280,12 +254,10 @@ export class BaseEngine {
     const account = privateKeyToAccount(this.config.base.privateKey);
 
     // Compute inner message hash as Base contracts do
-    const { innerHash, outerHash, evmMessage } = this.buildEvmMessage(
+    const { outerHash, evmMessage } = this.buildEvmMessage(
       outgoingMessageAccount,
       options.gasLimit
     );
-    this.logger.debug(`Computed inner hash: ${innerHash}`);
-    this.logger.debug(`Computed outer hash: ${outerHash}`);
 
     // Batch all on-chain reads into a single multicall for performance
     const [successesResult, failuresResult, messageHashResult] =
@@ -315,7 +287,6 @@ export class BaseEngine {
 
     // Check if message was already executed
     if (successesResult) {
-      this.logger.info("Message already executed on Base");
       return outerHash;
     }
 
@@ -341,7 +312,6 @@ export class BaseEngine {
     );
 
     // Execute the message on Base
-    this.logger.info("Executing Bridge.relayMessages on Base...");
     const tx = await this.walletClient.writeContract({
       address: this.config.base.bridgeContract,
       abi: BRIDGE_ABI,
@@ -350,10 +320,6 @@ export class BaseEngine {
       account,
       chain: this.config.base.chain,
     });
-    const explorerUrl =
-      this.config.base.chain.blockExplorers?.default.url ??
-      "https://basescan.org";
-    this.logger.info(`Message executed on Base: ${explorerUrl}/tx/${tx}`);
 
     return tx;
   }
@@ -370,8 +336,6 @@ export class BaseEngine {
     const maxInterval = 30_000;
 
     while (Date.now() - start <= timeoutMs) {
-      this.logger.debug(`Waiting for approval of message hash: ${messageHash}`);
-
       const approved = await this.publicClient.readContract({
         address: validatorAddress,
         abi: BRIDGE_VALIDATOR_ABI,
@@ -380,7 +344,6 @@ export class BaseEngine {
       });
 
       if (approved) {
-        this.logger.info("Message approved by BridgeValidator.");
         return;
       }
 
@@ -406,7 +369,7 @@ export class BaseEngine {
     }));
   }
 
-  private buildEvmMessage(
+  buildEvmMessage(
     outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
     gasLimit: bigint = DEFAULT_EVM_GAS_LIMIT
   ) {
@@ -444,14 +407,8 @@ export class BaseEngine {
 
   private bytes32FromPubkey(pubkey: Address): Hex {
     const bytes = getBase58Encoder().encode(pubkey);
-
-    // toHex requires a mutable Uint8Array
     let hex = toHex(new Uint8Array(bytes));
-    if (hex.length !== 66) {
-      // left pad to 32 bytes if needed
-      hex = padHex(hex, { size: 32 });
-    }
-
+    if (hex.length !== 66) hex = padHex(hex, { size: 32 });
     return hex;
   }
 
@@ -477,8 +434,6 @@ export class BaseEngine {
         remoteToken: this.bytes32FromPubkey(transfer.localToken),
         to: padHex(toHex(new Uint8Array(transfer.to)), {
           size: 32,
-          // Bytes32 `to` expects the EVM address in the first 20 bytes.
-          // Right-pad zeros so casting `bytes20(to)` yields the intended address.
           dir: "right",
         }),
         remoteAmount: BigInt(transfer.amount),
@@ -540,7 +495,7 @@ export class BaseEngine {
   private encodeCallData(call: Call): Hex {
     const evmTo = toHex(new Uint8Array(call.to));
 
-    const encoded = encodeAbiParameters(
+    return encodeAbiParameters(
       [
         {
           type: "tuple",
@@ -561,12 +516,10 @@ export class BaseEngine {
         },
       ]
     );
-    return encoded;
   }
 
   private callTupleObject(call: Call) {
     const evmTo = toHex(new Uint8Array(call.to));
-
     return {
       ty: Number(call.ty),
       to: evmTo,
