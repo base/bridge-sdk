@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
-import { buildEvmIncomingMessage } from "../src/adapters/protocols/base-markets/identity";
-import { BaseEngine } from "../src/adapters/protocols/base-markets/legacy/base-engine";
+import { buildEvmIncomingMessage } from "../src/core/protocol/identity";
+import { BaseEngine } from "../src/core/protocol/engines/base-engine";
 import { address as solAddress, type Account } from "@solana/kit";
 import { base } from "viem/chains";
 import type { OutgoingMessage } from "../src/clients/ts/src/bridge";

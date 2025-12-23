@@ -7,8 +7,8 @@ import {
   BridgeNotProvenError,
   BridgeProofNotAvailableError,
   BridgeUnsupportedActionError,
-} from "../../../../core/errors";
-import { pollingMonitor } from "../../../../core/monitor/polling";
+} from "../../errors";
+import { pollingMonitor } from "../../monitor/polling";
 import type {
   BridgeOperation,
   BridgeRequest,
@@ -23,18 +23,18 @@ import type {
   RouteAdapter,
   RouteCapabilities,
   StatusOptions,
-} from "../../../../core/types";
-import type { EvmChainAdapter } from "../../../chains/evm/types";
-import type { SolanaChainAdapter } from "../../../chains/solana/types";
-import type { BridgeConfig } from "../legacy/types";
-import { SolanaEngine } from "../legacy/solana-engine";
-import { BaseEngine } from "../legacy/base-engine";
-import { BRIDGE_ABI } from "../../../../interfaces/abis/bridge.abi";
+} from "../../types";
+import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
+import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
+import type { EngineConfig } from "../engines/types";
+import { SolanaEngine } from "../engines/solana-engine";
+import { BaseEngine } from "../engines/base-engine";
+import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 
 /**
  * Base -> SVM route adapter (Base is always the EVM side).
  */
-export class BaseMarketsBaseToSvmRouteAdapter implements RouteAdapter {
+export class BaseToSvmRouteAdapter implements RouteAdapter {
   readonly route: BridgeRoute;
 
   private readonly solana: SolanaChainAdapter;
@@ -64,7 +64,7 @@ export class BaseMarketsBaseToSvmRouteAdapter implements RouteAdapter {
     this.evmDeployment = args.evmDeployment;
     this.tokenMapping = args.tokenMapping;
 
-    const legacyConfig: BridgeConfig = {
+    const engineConfig: EngineConfig = {
       solana: {
         rpcUrl: this.solana.rpcUrl,
         payerKp: this.solana.payerKeypairPath,
@@ -79,8 +79,8 @@ export class BaseMarketsBaseToSvmRouteAdapter implements RouteAdapter {
       },
     };
 
-    this.solanaEngine = new SolanaEngine({ config: legacyConfig });
-    this.baseEngine = new BaseEngine({ config: legacyConfig });
+    this.solanaEngine = new SolanaEngine({ config: engineConfig });
+    this.baseEngine = new BaseEngine({ config: engineConfig });
   }
 
   async capabilities(): Promise<RouteCapabilities> {
@@ -238,7 +238,7 @@ export class BaseMarketsBaseToSvmRouteAdapter implements RouteAdapter {
       this.solana.rpcUrl
     );
     const { fetchMaybeIncomingMessage } = await import(
-      "../../../../clients/ts/src/bridge"
+      "../../../clients/ts/src/bridge"
     );
     const maybe = await fetchMaybeIncomingMessage(rpc, pda);
 
@@ -265,7 +265,7 @@ export class BaseMarketsBaseToSvmRouteAdapter implements RouteAdapter {
   ): Promise<SolAddress> {
     const { getProgramDerivedAddress } = await import("@solana/kit");
     const { getIdlConstant } = await import(
-      "../../../../utils/bridge-idl.constants"
+      "../../../utils/bridge-idl.constants"
     );
     const seeds = [
       Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),

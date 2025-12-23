@@ -4,16 +4,16 @@ import {
   type Ix,
   type fetchOutgoingMessage,
   type OutgoingMessage,
-} from "../../../../clients/ts/src/bridge";
-import { BRIDGE_ABI } from "../../../../interfaces/abis/bridge.abi";
-import { MessageType, type BridgeConfig, type CallParams } from "./types";
+} from "../../../clients/ts/src/bridge";
+import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
+import { MessageType, type EngineConfig, type CallParams } from "./types";
 import {
   getBase58Codec,
   getBase58Encoder,
   type Account,
   type Address,
 } from "@solana/kit";
-import { sleep } from "../../../../utils/time";
+import { sleep } from "../../../utils/time";
 import {
   createPublicClient,
   createWalletClient,
@@ -34,11 +34,11 @@ import {
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
 } from "./constants";
-import { type Logger, NOOP_LOGGER } from "../../../../utils/logger";
-import { BRIDGE_VALIDATOR_ABI } from "../../../../interfaces/abis/bridge-validator.abi";
+import { type Logger, NOOP_LOGGER } from "../../../utils/logger";
+import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
 
 export interface BaseEngineOpts {
-  config: BridgeConfig;
+  config: EngineConfig;
   logger?: Logger;
 }
 
@@ -57,7 +57,7 @@ export interface BaseBridgeTokenOpts {
 }
 
 export class BaseEngine {
-  private readonly config: BridgeConfig;
+  private readonly config: EngineConfig;
   private readonly logger: Logger;
   private readonly publicClient: PublicClient;
   private readonly walletClient: WalletClient | undefined;

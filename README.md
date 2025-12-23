@@ -24,14 +24,14 @@ bun run build
 - **Composable primitives**: `transfer`, `call`, `request`, plus `prove`, `execute`, `status`, and `monitor`.
 - **Canonical message identity**: a single `MessageRef` model with stable source identity and optional derived destination ids.
 - **Capability-driven UX**: `capabilities(route)` tells you which steps apply for a route.
-- **Bun-native**: Optimized for Bun runtime with fast build and test execution.
+- **Runtime-agnostic**: Compatible with standard Node.js environments (no Bun-only APIs).
 
 ## Project Structure
 
 ```
 src/
   core/           // BridgeClient orchestration + shared types/errors/monitor
-  adapters/       // Chain adapters + protocol adapters (Base Markets v1 reference impl)
+  adapters/       // Chain adapters + Base Markets bridge implementation (route adapters)
   clients/        // Generated clients (Solana/Base)
   interfaces/     // ABIs and IDLs
   utils/          // Helper functions
@@ -47,7 +47,6 @@ tests/            // bun:test specs
 import { createBridgeClient } from "@base-markets/bridge-sdk";
 import { makeSolanaAdapter } from "./your-adapters/solana";
 import { makeEvmAdapter } from "./your-adapters/evm";
-import { baseMarketsProtocol } from "./your-adapters/base-markets-protocol";
 
 async function main() {
   const client = createBridgeClient({
@@ -62,11 +61,6 @@ async function main() {
         wallet: { type: "none" },
       }),
     },
-    protocols: [
-      baseMarketsProtocol({
-        /* on-chain addresses per chain */
-      }),
-    ],
   });
 
   const op = await client.transfer({
@@ -84,6 +78,12 @@ async function main() {
 
 main().catch(console.error);
 ```
+
+#### Overriding deployments (advanced)
+
+If you need to target additional networks (e.g. Base Sepolia / Solana devnet) or
+use custom deployments, pass `deployments` overrides to:
+`createBridgeClient({ bridgeConfig: { deployments: ... } })`.
 
 ## Examples
 

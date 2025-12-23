@@ -5,6 +5,7 @@ import {
   type Account,
   type Address as SolAddress,
 } from "@solana/kit";
+import { readFile } from "node:fs/promises";
 import type { ChainRef } from "../../../core/types";
 import {
   fetchOutgoingMessage,
@@ -24,7 +25,8 @@ export async function makeSolanaAdapter(
   config: SolanaAdapterConfig
 ): Promise<SolanaChainAdapter> {
   const payerPath = expandHome(config.payer.path);
-  const keypairBytes = new Uint8Array(await Bun.file(payerPath).json());
+  const keypairJson = await readFile(payerPath, "utf8");
+  const keypairBytes = new Uint8Array(JSON.parse(keypairJson));
   const keypair = await createKeyPairFromBytes(keypairBytes);
   const payer = await createSignerFromKeyPair(keypair);
 

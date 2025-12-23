@@ -16,11 +16,6 @@ export interface ChainRef {
 export interface BridgeRoute {
   sourceChain: ChainId;
   destinationChain: ChainId;
-  /**
-   * Optional protocol hint if multiple bridge protocols are registered.
-   * If omitted, the client selects the first protocol that supports the route.
-   */
-  protocol?: string;
 }
 
 /**
@@ -125,7 +120,6 @@ export interface BridgeOperation {
 
 export interface ResolvedRoute {
   route: BridgeRoute;
-  protocolId: string;
 }
 
 export interface ProveOptions {
@@ -184,7 +178,7 @@ export interface MessageRef {
   destination?: MessageEndpointRef;
 
   /**
-   * Optional derived identifiers used by specific protocols to query status.
+   * Optional derived identifiers used by specific bridge implementations to query status.
    * Implementations must document what they include.
    */
   derived?: Record<string, string>;
@@ -229,18 +223,6 @@ export interface ChainAdapter {
   finality?(): Promise<
     { type: "instant" } | { type: "confirmations"; confirmations: number }
   >;
-}
-
-export interface BridgeProtocol {
-  /** Stable identifier for selection/telemetry. */
-  readonly id: string;
-  /** Returns true if this protocol supports the route. */
-  supportsRoute(route: BridgeRoute): boolean;
-  /** Build a route adapter for the specific pair. */
-  resolveRoute(
-    route: BridgeRoute,
-    chains: Record<ChainId, ChainAdapter>
-  ): Promise<RouteAdapter>;
 }
 
 export interface RouteAdapter {
