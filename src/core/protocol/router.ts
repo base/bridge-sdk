@@ -4,6 +4,7 @@ import type {
   ChainId,
   RouteAdapter,
 } from "../types";
+import { isSolanaChainId } from "../utils";
 import { BridgeUnsupportedRouteError } from "../errors";
 import type { EvmChainAdapter } from "../../adapters/chains/evm/types";
 import type { SolanaChainAdapter } from "../../adapters/chains/solana/types";
@@ -52,10 +53,6 @@ export interface BridgeConfig {
 
 function routeMapKey(route: BridgeRoute): string {
   return `${route.sourceChain}->${route.destinationChain}`;
-}
-
-function isSolanaChainId(id: string): boolean {
-  return id.startsWith("solana:");
 }
 
 /**

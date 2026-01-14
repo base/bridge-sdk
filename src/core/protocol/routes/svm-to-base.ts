@@ -10,6 +10,8 @@ import type {
   BridgeOperation,
   BridgeRequest,
   BridgeRoute,
+  DestinationCall,
+  EvmCall,
   ExecuteOptions,
   ExecuteResult,
   ExecutionStatus,
@@ -21,6 +23,7 @@ import type {
   RouteCapabilities,
   StatusOptions,
 } from "../../types";
+import { isEvmDestinationCall } from "../../utils";
 import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
 import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
 import { SolanaEngine } from "../engines/solana-engine";
@@ -99,11 +102,13 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     const gasLimit = req.relay?.gasLimit ?? 100_000n;
 
     if (req.action.kind === "call") {
+      const evmCall = this.extractEvmCall(req.action.call);
+
       const outgoingPda = await this.solanaEngine.bridgeCall({
-        to: req.action.call.to,
-        value: req.action.call.value,
-        data: req.action.call.data,
-        ty: req.action.call.ty,
+        to: evmCall.to,
+        value: evmCall.value,
+        data: evmCall.data,
+        ty: evmCall.ty,
         payForRelay,
         gasLimit,
         idempotencyKey: req.idempotencyKey,
@@ -128,17 +133,20 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     }
 
     if (req.action.kind === "transfer") {
+      // Extract optional EVM call for transfer+call
+      const evmCall = this.extractOptionalEvmCall(req.action.call);
+
       if (req.action.asset.kind === "native") {
         const outgoingPda = await this.solanaEngine.bridgeSol({
           to: req.action.recipient as `0x${string}`,
           amount: req.action.amount,
           payForRelay,
-          call: req.action.call
+          call: evmCall
             ? {
-                to: req.action.call.to,
-                value: req.action.call.value,
-                data: req.action.call.data,
-                ty: req.action.call.ty,
+                to: evmCall.to,
+                value: evmCall.value,
+                data: evmCall.data,
+                ty: evmCall.ty,
               }
             : undefined,
           gasLimit,
@@ -182,12 +190,12 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           remoteToken,
           amount: req.action.amount,
           payForRelay,
-          call: req.action.call
+          call: evmCall
             ? {
-                to: req.action.call.to,
-                value: req.action.call.value,
-                data: req.action.call.data,
-                ty: req.action.call.ty,
+                to: evmCall.to,
+                value: evmCall.value,
+                data: evmCall.data,
+                ty: evmCall.ty,
               }
             : undefined,
           gasLimit,
@@ -221,12 +229,12 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           mint: req.action.asset.address,
           amount: req.action.amount,
           payForRelay,
-          call: req.action.call
+          call: evmCall
             ? {
-                to: req.action.call.to,
-                value: req.action.call.value,
-                data: req.action.call.data,
-                ty: req.action.call.ty,
+                to: evmCall.to,
+                value: evmCall.value,
+                data: evmCall.data,
+                ty: evmCall.ty,
               }
             : undefined,
           gasLimit,
@@ -259,6 +267,30 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       route: req.route,
       actionKind: req.action.kind,
     });
+  }
+
+  /**
+   * Extract EvmCall from a DestinationCall, validating it's the correct type.
+   */
+  private extractEvmCall(destCall: DestinationCall): EvmCall {
+    if (!isEvmDestinationCall(destCall)) {
+      throw new BridgeUnsupportedActionError({
+        route: this.route,
+        actionKind:
+          "svm->base: call requires EvmCall. Use { kind: 'evm', call: EvmCall }.",
+      });
+    }
+    return destCall.call;
+  }
+
+  /**
+   * Extract optional EvmCall from an optional DestinationCall.
+   */
+  private extractOptionalEvmCall(
+    destCall?: DestinationCall
+  ): EvmCall | undefined {
+    if (!destCall) return undefined;
+    return this.extractEvmCall(destCall);
   }
 
   async prove(_ref: MessageRef, _opts?: ProveOptions): Promise<ProveResult> {

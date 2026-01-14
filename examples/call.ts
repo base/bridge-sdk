@@ -23,9 +23,12 @@ async function main() {
   const op = await client.call({
     route: { sourceChain: "solana:mainnet", destinationChain: BASE_MAINNET_CHAIN_ID },
     call: {
-      to: "0x5d3eB988Daa06151b68369cf957e917B4371d35d",
-      value: 0n,
-      data: "0xd09de08a",
+      kind: "evm",
+      call: {
+        to: "0x5d3eB988Daa06151b68369cf957e917B4371d35d",
+        value: 0n,
+        data: "0xd09de08a",
+      },
     },
     relay: { mode: "auto" },
   });

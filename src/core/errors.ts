@@ -40,6 +40,7 @@ export type BridgeErrorCode =
   | "UNSUPPORTED_ROUTE"
   | "UNSUPPORTED_ACTION"
   | "UNSUPPORTED_STEP"
+  | "CALL_TYPE_MISMATCH"
   | "CONFIG_ERROR"
   | "RPC_ERROR"
   | "TIMEOUT"
@@ -106,6 +107,25 @@ export class BridgeUnsupportedStepError extends BridgeError {
       cause: args.cause,
     });
     this.name = "BridgeUnsupportedStepError";
+  }
+}
+
+export class BridgeCallTypeMismatchError extends BridgeError {
+  constructor(args: {
+    route: BridgeRoute;
+    expected: string;
+    received: string;
+    cause?: unknown;
+  }) {
+    super({
+      message: `Call type mismatch for route ${args.route.sourceChain} -> ${args.route.destinationChain}: expected ${args.expected}, received ${args.received}`,
+      code: "CALL_TYPE_MISMATCH",
+      outcome: "user_fix",
+      stage: "initiate",
+      route: args.route,
+      cause: args.cause,
+    });
+    this.name = "BridgeCallTypeMismatchError";
   }
 }
 

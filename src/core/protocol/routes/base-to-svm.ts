@@ -1,7 +1,7 @@
 import type { Address as SolAddress } from "@solana/kit";
 import { address as solAddress } from "@solana/kit";
 import type { Hash, Hex } from "viem";
-import { decodeEventLog } from "viem";
+import { decodeEventLog, toBytes } from "viem";
 import {
   BridgeAlreadyExecutedError,
   BridgeNotProvenError,
@@ -13,6 +13,7 @@ import type {
   BridgeOperation,
   BridgeRequest,
   BridgeRoute,
+  DestinationCall,
   ExecuteOptions,
   ExecuteResult,
   ExecutionStatus,
@@ -22,8 +23,11 @@ import type {
   ProveResult,
   RouteAdapter,
   RouteCapabilities,
+  SolanaInstruction,
   StatusOptions,
 } from "../../types";
+import { isSolanaDestinationCall } from "../../utils";
+import type { Ix } from "../../../clients/ts/src/bridge";
 import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
 import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
 import type { EngineConfig } from "../engines/types";
@@ -93,17 +97,80 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
   }
 
   async initiate(req: BridgeRequest): Promise<BridgeOperation> {
-    if (req.action.kind !== "transfer") {
+    if (req.action.kind === "call") {
+      return this.initiateCall(req);
+    }
+
+    if (req.action.kind === "transfer") {
+      return this.initiateTransfer(req);
+    }
+
+    // Exhaustive check - this should never be reached
+    const _exhaustive: never = req.action;
+    throw new BridgeUnsupportedActionError({
+      route: req.route,
+      actionKind: (_exhaustive as { kind: string }).kind,
+    });
+  }
+
+  /**
+   * Initiate a pure call action (Solana instructions only, no transfer).
+   */
+  private async initiateCall(req: BridgeRequest): Promise<BridgeOperation> {
+    if (req.action.kind !== "call") {
+      throw new Error("Expected call action");
+    }
+
+    const destCall = req.action.call;
+    if (!isSolanaDestinationCall(destCall)) {
       throw new BridgeUnsupportedActionError({
         route: req.route,
-        actionKind: "base->svm: only transfer supported in v1",
+        actionKind:
+          "base->svm: call requires SolanaCall (kind: 'solana'). Use { kind: 'solana', call: { instructions: [...] } }",
       });
+    }
+
+    const ixs = this.convertToIx(destCall.call.instructions);
+    const txHash = await this.baseEngine.bridgeCall({ ixs });
+
+    const { messageHash, nonce, sender, data, mmrRoot } =
+      await this.extractMessageInitiated(txHash);
+
+    const messageRef: MessageRef = {
+      route: req.route,
+      source: {
+        chain: req.route.sourceChain,
+        id: { scheme: "evm:messageHash", value: messageHash },
+      },
+      derived: {
+        txHash,
+        nonce: nonce.toString(),
+        sender,
+        data,
+        mmrRoot,
+      },
+    };
+
+    return {
+      route: req.route,
+      request: req,
+      messageRef,
+      initiationTx: txHash,
+    };
+  }
+
+  /**
+   * Initiate a transfer action, optionally with a SolanaCall for transfer+call.
+   */
+  private async initiateTransfer(req: BridgeRequest): Promise<BridgeOperation> {
+    if (req.action.kind !== "transfer") {
+      throw new Error("Expected transfer action");
     }
 
     if (req.action.asset.kind !== "token") {
       throw new BridgeUnsupportedActionError({
         route: req.route,
-        actionKind: "base->svm: only token transfers supported in v1",
+        actionKind: "base->svm: only token transfers supported",
       });
     }
 
@@ -116,6 +183,9 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       });
     }
 
+    // Convert optional SolanaCall to Ix[] for transfer+call
+    const ixs = this.extractSolanaIxs(req.action.call);
+
     const txHash = await this.baseEngine.bridgeToken({
       transfer: {
         localToken,
@@ -123,7 +193,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
         to: solAddress(req.action.recipient),
         amount: req.action.amount,
       },
-      ixs: [],
+      ixs,
     });
 
     const { messageHash, nonce, sender, data, mmrRoot } =
@@ -150,6 +220,42 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       messageRef,
       initiationTx: txHash,
     };
+  }
+
+  /**
+   * Extract Solana instructions from an optional DestinationCall.
+   * Returns empty array if no call, throws if call is not a SolanaCall.
+   */
+  private extractSolanaIxs(call?: DestinationCall): Ix[] {
+    if (!call) return [];
+
+    if (!isSolanaDestinationCall(call)) {
+      throw new BridgeUnsupportedActionError({
+        route: this.route,
+        actionKind:
+          "base->svm: transfer call must be SolanaCall (kind: 'solana')",
+      });
+    }
+
+    return this.convertToIx(call.call.instructions);
+  }
+
+  /**
+   * Convert SDK SolanaInstruction[] to internal Ix[] format used by the bridge.
+   */
+  private convertToIx(instructions: SolanaInstruction[]): Ix[] {
+    return instructions.map((ix) => ({
+      programId: solAddress(ix.programId),
+      accounts: ix.accounts.map((acc) => ({
+        pubkey: solAddress(acc.pubkey),
+        isWritable: acc.isWritable,
+        isSigner: acc.isSigner,
+      })),
+      data:
+        ix.data instanceof Uint8Array
+          ? ix.data
+          : toBytes(ix.data as `0x${string}`),
+    }));
   }
 
   async prove(ref: MessageRef, opts?: ProveOptions): Promise<ProveResult> {

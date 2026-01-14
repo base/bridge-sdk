@@ -37,14 +37,61 @@ export interface EvmCall {
   ty?: number;
 }
 
+/**
+ * Solana account metadata for instruction execution.
+ */
+export interface SolanaAccountMeta {
+  /** Base58-encoded Solana public key */
+  pubkey: string;
+  /** Whether the account is writable */
+  isWritable: boolean;
+  /** Whether the account is a signer (will be signed by bridge CPI authority) */
+  isSigner: boolean;
+}
+
+/**
+ * Solana instruction to be executed on the destination chain.
+ * Represents a CPI call that will be invoked by the bridge program.
+ */
+export interface SolanaInstruction {
+  /** Base58-encoded program ID */
+  programId: string;
+  /** Account metas for the instruction */
+  accounts: SolanaAccountMeta[];
+  /** Raw instruction data as Uint8Array or hex string */
+  data: Uint8Array | `0x${string}`;
+}
+
+/**
+ * SolanaCall represents one or more Solana instructions to execute
+ * on the destination SVM chain via bridge CPI.
+ */
+export interface SolanaCall {
+  /** Instructions to execute via bridge CPI */
+  instructions: SolanaInstruction[];
+}
+
+/**
+ * Discriminated union for destination-chain calls.
+ * The kind must match the destination chain type:
+ * - "evm": For routes where destination is an EVM chain (e.g., SVM -> Base)
+ * - "solana": For routes where destination is Solana (e.g., Base -> SVM)
+ */
+export type DestinationCall =
+  | { kind: "evm"; call: EvmCall }
+  | { kind: "solana"; call: SolanaCall };
+
 export interface TransferRequestInput {
   route: BridgeRoute;
   asset: AssetRef;
   amount: bigint;
   /** Destination-chain address (chain is implied by route.destinationChain). */
   recipient: ChainAddress;
-  /** Optional destination-side call (transfer+call) when supported. */
-  call?: EvmCall;
+  /**
+   * Optional destination-side call (transfer+call) when supported.
+   * The call kind must match the destination chain type.
+   */
+  call?: DestinationCall;
   relay?: RelayOptions;
   idempotencyKey?: string;
   metadata?: Record<string, unknown>;
@@ -52,7 +99,11 @@ export interface TransferRequestInput {
 
 export interface CallRequestInput {
   route: BridgeRoute;
-  call: EvmCall;
+  /**
+   * Destination call to execute.
+   * The call kind must match the destination chain type.
+   */
+  call: DestinationCall;
   relay?: RelayOptions;
   idempotencyKey?: string;
   metadata?: Record<string, unknown>;
@@ -66,13 +117,14 @@ export interface TransferAction {
   amount: bigint;
   /** Destination-chain address (chain is implied by route.destinationChain). */
   recipient: ChainAddress;
-  /** Optional “destination-side call” if the protocol supports transfer+call. */
-  call?: CallAction["call"];
+  /** Optional "destination-side call" if the protocol supports transfer+call. */
+  call?: DestinationCall;
 }
 
 export interface CallAction {
   kind: "call";
-  call: EvmCall; // v1: call model matches current Base EVM call constraints
+  /** Destination call - discriminated by kind to match destination chain type. */
+  call: DestinationCall;
 }
 
 export interface RelayOptions {

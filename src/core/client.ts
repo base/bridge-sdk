@@ -26,6 +26,7 @@ import type {
   StatusOptions,
   TransferRequestInput,
 } from "./types";
+import { validateDestinationCall } from "./utils";
 
 export interface BridgeClientConfig {
   /** Registered chains and their adapters. */
@@ -106,6 +107,11 @@ class DefaultBridgeClient implements BridgeClient {
   }
 
   async transfer(req: TransferRequestInput): Promise<BridgeOperation> {
+    // Validate call matches destination chain if present
+    if (req.call) {
+      validateDestinationCall(req.call, req.route);
+    }
+
     const bridgeReq: BridgeRequest = {
       route: req.route,
       action: {
@@ -123,6 +129,9 @@ class DefaultBridgeClient implements BridgeClient {
   }
 
   async call(req: CallRequestInput): Promise<BridgeOperation> {
+    // Validate call matches destination chain
+    validateDestinationCall(req.call, req.route);
+
     const bridgeReq: BridgeRequest = {
       route: req.route,
       action: { kind: "call", call: req.call },
