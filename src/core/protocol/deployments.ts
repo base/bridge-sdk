@@ -1,6 +1,6 @@
 import { address as solAddress, type Address as SolAddress } from "@solana/kit";
 import type { Hex } from "viem";
-import type { BridgeConfig } from "./router";
+import { BASE_MAINNET_CHAIN_ID, type BridgeConfig } from "./router";
 import type { ChainId } from "../types";
 
 /**
@@ -20,7 +20,7 @@ export const DEFAULT_BRIDGE_DEPLOYMENTS: BridgeConfig["deployments"] = {
   },
   base: {
     // Base mainnet bridge contract
-    "eip155:8453": {
+    [BASE_MAINNET_CHAIN_ID]: {
       bridgeContract: "0x3eff766C76a1be2Ce1aCF2B69c78bCae257D5188",
     },
   },

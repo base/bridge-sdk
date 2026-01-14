@@ -1,12 +1,13 @@
 import { createBridgeClient } from "../src";
 import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
 import { makeEvmAdapter } from "../src/adapters/chains/evm/adapter";
+import { BASE_MAINNET_CHAIN_ID } from "../src/core/protocol/router";
 
 // Example: Base (EVM) -> Solana token transfer (requires tokenMappings for ERC20->mint)
 async function main() {
   const client = createBridgeClient({
     chains: {
-      "eip155:8453": makeEvmAdapter({
+      [BASE_MAINNET_CHAIN_ID]: makeEvmAdapter({
         chainId: 8453,
         rpcUrl: "https://mainnet.base.org",
         wallet: { type: "privateKey", key: "0xYOUR_PRIVATE_KEY" },
@@ -19,7 +20,7 @@ async function main() {
     },
     bridgeConfig: {
       tokenMappings: {
-        "eip155:8453->solana:mainnet": {
+        [`${BASE_MAINNET_CHAIN_ID}->solana:mainnet`]: {
           // ERC20 -> Solana mint (base58)
           "0x0000000000000000000000000000000000000000":
             "So11111111111111111111111111111111111111112",
@@ -29,7 +30,7 @@ async function main() {
   });
 
   const op = await client.transfer({
-    route: { sourceChain: "eip155:8453", destinationChain: "solana:mainnet" },
+    route: { sourceChain: BASE_MAINNET_CHAIN_ID, destinationChain: "solana:mainnet" },
     asset: {
       kind: "token",
       address: "0x0000000000000000000000000000000000000000",

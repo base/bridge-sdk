@@ -12,6 +12,20 @@ import { SvmToBaseRouteAdapter } from "./routes/svm-to-base";
 import type { Address as SolAddress } from "@solana/kit";
 import type { Hex } from "viem";
 
+/**
+ * Hub chain identifiers for the bridge.
+ *
+ * The bridge uses a hub-and-spoke architecture where Base is the permanent hub.
+ * All routes must include one of these chains as either source or destination.
+ * This is a fundamental protocol constraint, not a temporary limitation.
+ */
+export const BASE_MAINNET_CHAIN_ID = "eip155:8453";
+export const BASE_SEPOLIA_CHAIN_ID = "eip155:84532";
+export const HUB_CHAIN_IDS = [
+  BASE_MAINNET_CHAIN_ID,
+  BASE_SEPOLIA_CHAIN_ID,
+] as const;
+
 export interface BridgeConfig {
   /**
    * On-chain addresses per chain.
@@ -44,13 +58,15 @@ function isSolanaChainId(id: string): boolean {
   return id.startsWith("solana:");
 }
 
-function isEip155ChainId(id: string): boolean {
-  return id.startsWith("eip155:");
-}
-
+/**
+ * Checks if the given chain ID is a Base hub chain.
+ *
+ * Base bridge uses a hub-and-spoke architecture with Base as the
+ * permanent hub. All routes must include Base mainnet or Base Sepolia.
+ * This is a fundamental protocol constraint, not a temporary limitation.
+ */
 function isBaseEvmChainId(id: string): boolean {
-  // Base mainnet + Base Sepolia
-  return id === "eip155:8453" || id === "eip155:84532";
+  return HUB_CHAIN_IDS.includes(id as (typeof HUB_CHAIN_IDS)[number]);
 }
 
 function asSolanaAdapter(
@@ -76,8 +92,8 @@ export function supportsBridgeRoute(route: BridgeRoute): boolean {
 
   return (
     (isSolanaChainId(route.sourceChain) &&
-      isEip155ChainId(route.destinationChain)) ||
-    (isEip155ChainId(route.sourceChain) &&
+      isBaseEvmChainId(route.destinationChain)) ||
+    (isBaseEvmChainId(route.sourceChain) &&
       isSolanaChainId(route.destinationChain))
   );
 }
@@ -93,7 +109,7 @@ export async function resolveBridgeRoute(
 
   if (
     isSolanaChainId(route.sourceChain) &&
-    isEip155ChainId(route.destinationChain)
+    isBaseEvmChainId(route.destinationChain)
   ) {
     const sol = asSolanaAdapter(source);
     const evm = asEvmAdapter(dest);
@@ -112,7 +128,7 @@ export async function resolveBridgeRoute(
   }
 
   if (
-    isEip155ChainId(route.sourceChain) &&
+    isBaseEvmChainId(route.sourceChain) &&
     isSolanaChainId(route.destinationChain)
   ) {
     const evm = asEvmAdapter(source);

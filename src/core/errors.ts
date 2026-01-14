@@ -1,4 +1,8 @@
 import type { BridgeRoute, ChainId } from "./types";
+import {
+  BASE_MAINNET_CHAIN_ID,
+  BASE_SEPOLIA_CHAIN_ID,
+} from "./protocol/router";
 
 /**
  * Core error base class.
@@ -57,7 +61,7 @@ export type ActionableOutcome = "retry" | "user_fix" | "fatal";
 export class BridgeUnsupportedRouteError extends BridgeError {
   constructor(route: BridgeRoute, cause?: unknown) {
     super({
-      message: `Unsupported route: ${route.sourceChain} -> ${route.destinationChain}`,
+      message: `Unsupported route: ${route.sourceChain} -> ${route.destinationChain}. All routes must include Base (${BASE_MAINNET_CHAIN_ID} or ${BASE_SEPOLIA_CHAIN_ID}) as either source or destination.`,
       code: "UNSUPPORTED_ROUTE",
       outcome: "user_fix",
       stage: "initiate",

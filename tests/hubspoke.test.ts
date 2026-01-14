@@ -1,19 +1,23 @@
 import { test, expect } from "bun:test";
-import { supportsBridgeRoute } from "../src/core/protocol/router";
+import {
+  supportsBridgeRoute,
+  BASE_MAINNET_CHAIN_ID,
+  BASE_SEPOLIA_CHAIN_ID,
+} from "../src/core/protocol/router";
 
 test("bridge: supports only routes that include Base mainnet or Base Sepolia", () => {
   // Allowed (includes Base mainnet)
   expect(
     supportsBridgeRoute({
       sourceChain: "solana:mainnet",
-      destinationChain: "eip155:8453",
+      destinationChain: BASE_MAINNET_CHAIN_ID,
     })
   ).toBe(true);
 
   // Allowed (includes Base Sepolia)
   expect(
     supportsBridgeRoute({
-      sourceChain: "eip155:84532",
+      sourceChain: BASE_SEPOLIA_CHAIN_ID,
       destinationChain: "solana:mainnet",
     })
   ).toBe(true);
