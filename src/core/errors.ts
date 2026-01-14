@@ -1,8 +1,4 @@
 import type { BridgeRoute, ChainId } from "./types";
-import {
-  BASE_MAINNET_CHAIN_ID,
-  BASE_SEPOLIA_CHAIN_ID,
-} from "./protocol/router";
 
 /**
  * Core error base class.
