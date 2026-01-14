@@ -61,7 +61,7 @@ export type ActionableOutcome = "retry" | "user_fix" | "fatal";
 export class BridgeUnsupportedRouteError extends BridgeError {
   constructor(route: BridgeRoute, cause?: unknown) {
     super({
-      message: `Unsupported route: ${route.sourceChain} -> ${route.destinationChain}.`,
+      message: `Unsupported route: ${route.sourceChain} -> ${route.destinationChain}`,
       code: "UNSUPPORTED_ROUTE",
       outcome: "user_fix",
       stage: "initiate",
