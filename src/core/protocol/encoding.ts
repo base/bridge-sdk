@@ -10,7 +10,7 @@ import type {
   fetchOutgoingMessage,
 } from "../../clients/ts/src/bridge";
 
-export const BASE_MARKETS_MESSAGE_TYPE = {
+export const MESSAGE_TYPE = {
   Call: 0,
   Transfer: 1,
   TransferAndCall: 2,
@@ -29,7 +29,7 @@ export function encodeOutgoingMessagePayload(
   // Call
   if (msg.__kind === "Call") {
     const call = msg.fields[0];
-    return { ty: BASE_MARKETS_MESSAGE_TYPE.Call, data: encodeCallData(call) };
+    return { ty: MESSAGE_TYPE.Call, data: encodeCallData(call) };
   }
 
   // Transfer (with optional call)
@@ -64,7 +64,7 @@ export function encodeOutgoingMessagePayload(
     );
 
     if (transfer.call.__option === "None") {
-      return { ty: BASE_MARKETS_MESSAGE_TYPE.Transfer, data: encodedTransfer };
+      return { ty: MESSAGE_TYPE.Transfer, data: encodedTransfer };
     }
 
     const call = transfer.call.value;
@@ -93,7 +93,7 @@ export function encodeOutgoingMessagePayload(
       [transferTuple, callTuple]
     );
 
-    return { ty: BASE_MARKETS_MESSAGE_TYPE.TransferAndCall, data };
+    return { ty: MESSAGE_TYPE.TransferAndCall, data };
   }
 
   // Exhaustive guard.

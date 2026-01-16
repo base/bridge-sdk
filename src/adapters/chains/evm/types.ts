@@ -20,7 +20,7 @@ export type EvmAdapterConfig =
       wallet?: EvmWalletConfig;
     }
   | {
-      /** Bridge SDK chain object (e.g. `import { base } from "@base-markets/bridge-sdk/chains"`). */
+      /** Bridge SDK chain object (e.g. `import { base } from "./bridge-sdk/chains"`). */
       chain: BridgeEvmChainRef;
       chainId?: undefined;
       rpcUrl: string;

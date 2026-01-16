@@ -5,7 +5,7 @@
 > This codebase is a work in progress and has not been audited. This is not yet recommended for production use.
 > Use at your own risk.
 
-Composable cross-chain bridge SDK for Base Markets integrations.
+Composable cross-chain bridge SDK for Base Bridge integrations.
 
 ## Getting Started
 
@@ -26,26 +26,13 @@ bun run build
 - **Capability-driven UX**: `capabilities(route)` tells you which steps apply for a route.
 - **Runtime-agnostic**: Compatible with standard Node.js environments (no Bun-only APIs).
 
-## Project Structure
-
-```
-src/
-  core/           // BridgeClient orchestration + shared types/errors/monitor
-  adapters/       // Chain adapters + Base Markets bridge implementation (route adapters)
-  clients/        // Generated clients (Solana/Base)
-  interfaces/     // ABIs and IDLs
-  utils/          // Helper functions
-examples/         // Usage examples
-tests/            // bun:test specs
-```
-
 ## Usage Example
 
 ### Bridging SOL from Solana to Base
 
 ```ts
-import { createBridgeClient } from "@base-markets/bridge-sdk";
-import { base, solanaMainnet } from "@base-markets/bridge-sdk/chains";
+import { createBridgeClient } from "./bridge-sdk";
+import { base, solanaMainnet } from "./bridge-sdk/chains";
 import { makeSolanaAdapter } from "./your-adapters/solana";
 import { makeEvmAdapter } from "./your-adapters/evm";
 

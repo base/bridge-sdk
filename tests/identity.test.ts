@@ -6,7 +6,7 @@ import { base } from "viem/chains";
 import type { OutgoingMessage } from "../src/clients/ts/src/bridge";
 import { CallType } from "../src/clients/ts/src/bridge";
 
-test("base-markets: buildEvmIncomingMessage matches legacy BaseEngine hashing", () => {
+test("base-bridge: buildEvmIncomingMessage matches legacy BaseEngine hashing", () => {
   const outgoing: Account<OutgoingMessage, string> = {
     address: solAddress("11111111111111111111111111111111"),
     programAddress: solAddress("11111111111111111111111111111111"),

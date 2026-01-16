@@ -1,7 +1,7 @@
 {
-  "name": "@base-markets/bridge-sdk",
+  "name": "bridge-sdk",
   "version": "0.1.0",
-  "description": "Composable cross-chain bridge SDK for Base Markets integrations.",
+  "description": "Composable cross-chain bridge SDK for Base Bridge integrations.",
   "type": "module",
   "module": "./dist/index.js",
   "main": "./dist/index.js",

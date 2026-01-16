@@ -6,7 +6,7 @@ import {
   outgoingMessagePubkeyBytes32,
 } from "./encoding";
 
-export interface BaseMarketsEvmIncomingMessage {
+export interface EvmIncomingMessage {
   outgoingMessagePubkey: Hex;
   gasLimit: bigint;
   nonce: bigint;
@@ -24,7 +24,7 @@ export function buildEvmIncomingMessage(
 ): {
   innerHash: Hex;
   outerHash: Hex;
-  evmMessage: BaseMarketsEvmIncomingMessage;
+  evmMessage: EvmIncomingMessage;
 } {
   const nonce = BigInt(outgoing.data.nonce);
   const sender = bytes32FromSolanaPubkey(outgoing.data.sender);
