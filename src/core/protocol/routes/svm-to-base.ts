@@ -34,6 +34,28 @@ import type { EngineConfig } from "../engines/types";
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import { buildEvmIncomingMessage } from "../identity";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Fee estimation constants for SVM -> Base quotes
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Solana base transaction fee in lamports */
+const SOLANA_BASE_TX_FEE = 5_000n;
+/** Additional compute unit buffer for bridge operations */
+const SOLANA_COMPUTE_UNIT_BUFFER = 10_000n;
+/** Default gas limit when not specified */
+const DEFAULT_GAS_LIMIT = 100_000n;
+/** Base gas cost for token transfer on Base (without call) */
+const BASE_TOKEN_TRANSFER_GAS = 65_000n;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timing estimates for SVM -> Base (in milliseconds)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Minimum expected time: Solana finality (~400ms) + validator (~30s) + Base (~2s) */
+const MIN_TIME_MS = 30_000;
+/** Maximum expected time: conservative estimate with delays */
+const MAX_TIME_MS = 120_000;
+
 /**
  * SVM -> Base route adapter
  *
@@ -100,20 +122,15 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
   }
 
   async quote(req: QuoteRequest): Promise<Quote> {
-    const gasLimit = req.relay?.gasLimit ?? 100_000n;
+    const gasLimit = req.relay?.gasLimit ?? DEFAULT_GAS_LIMIT;
     const relayMode = req.relay?.mode ?? "auto";
     const warnings: string[] = [];
 
     // Fetch on-chain config for fee estimation
-    const { bridgeGasConfig, relayerGasConfig } =
-      await this.solanaEngine.getGasConfigs();
+    const { relayerGasConfig } = await this.solanaEngine.getGasConfigs();
 
     // Estimate source chain fees (Solana transaction fees)
-    // Base Solana tx fee is 5000 lamports, but complex bridge ops may need more
-    // This is a conservative estimate for bridge operations
-    const baseTxFee = 5_000n; // 5000 lamports base fee
-    const computeUnitBuffer = 10_000n; // Additional compute unit costs
-    const sourceGasFee = baseTxFee + computeUnitBuffer;
+    const sourceGasFee = SOLANA_BASE_TX_FEE + SOLANA_COMPUTE_UNIT_BUFFER;
 
     // Calculate relay fee if auto-relay is requested
     let relayFee: bigint | undefined;
@@ -149,25 +166,21 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           value: evmCall.value,
           data: evmCall.data,
         });
-      } catch {
+      } catch (err) {
         // Gas estimation may fail if call would revert, use default
         destinationGas = gasLimit;
-        warnings.push("Destination gas estimation failed, using provided limit");
+        warnings.push(
+          `Destination gas estimation failed: ${err instanceof Error ? err.message : String(err)}. Using provided limit.`
+        );
       }
     } else if (req.action.kind === "transfer") {
       // Transfer operations have predictable gas costs on Base
-      // Base cost for token transfer: ~65k gas, with call: ~100k+
-      destinationGas = req.action.call ? gasLimit : 65_000n;
+      destinationGas = req.action.call ? gasLimit : BASE_TOKEN_TRANSFER_GAS;
     }
 
-    // Estimate timing
-    // SVM -> Base timing:
-    // - Solana finality: ~400ms (optimistic), ~12s (finalized)
-    // - Validator approval: ~30-60s
-    // - Base execution: ~2s
     const estimatedTimeMs = {
-      min: 30_000, // 30 seconds optimistic
-      max: 120_000, // 2 minutes conservative
+      min: MIN_TIME_MS,
+      max: MAX_TIME_MS,
     };
 
     const quote: Quote = {

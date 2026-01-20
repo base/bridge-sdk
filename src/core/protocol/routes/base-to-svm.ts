@@ -1,5 +1,5 @@
 import type { Address as SolAddress, Instruction } from "@solana/kit";
-import { address as solAddress } from "@solana/kit";
+import { AccountRole, address as solAddress } from "@solana/kit";
 import type { Hash, Hex } from "viem";
 import { decodeEventLog, toBytes } from "viem";
 import {
@@ -36,6 +36,40 @@ import type { EngineConfig } from "../engines/types";
 import { SolanaEngine } from "../engines/solana-engine";
 import { BaseEngine } from "../engines/base-engine";
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gas estimation constants for Base -> SVM quotes
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Default gas estimate for call operations when estimation fails */
+const DEFAULT_CALL_GAS = 150_000n;
+/** Default gas estimate for transfer operations when estimation fails */
+const DEFAULT_TRANSFER_GAS = 200_000n;
+/** Base gas cost for a bridgeCall transaction */
+const BRIDGE_CALL_BASE_GAS = 100_000n;
+/** Additional gas per Solana instruction in a bridgeCall */
+const GAS_PER_INSTRUCTION = 5_000n;
+/** Base gas cost for a bridgeToken transaction */
+const BRIDGE_TOKEN_BASE_GAS = 150_000n;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Solana fee estimation constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Solana base transaction fee in lamports (per signature) */
+const SOLANA_BASE_TX_FEE = 5_000n;
+/** Estimated compute units for prove operation */
+const SOLANA_PROVE_COMPUTE_LAMPORTS = 5_000n;
+/** Bridge execute overhead in compute units (CPI, account validation) */
+const BRIDGE_EXECUTE_OVERHEAD_CU = 50_000n;
+/** Lamports per compute unit (conservative priority fee estimate) */
+const LAMPORTS_PER_CU = 1n;
+/** Fallback lamports per instruction when simulation fails */
+const FALLBACK_LAMPORTS_PER_INSTRUCTION = 50_000n;
+/** Minimum compute fee when calculated fee is zero */
+const MIN_COMPUTE_FEE_LAMPORTS = 5_000n;
+/** Base execute fee when no custom instructions */
+const BASE_EXECUTE_FEE_LAMPORTS = 10_000n;
 
 /**
  * Base -> SVM route adapter (Base is always the EVM side).
@@ -107,10 +141,13 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     let sourceGas: bigint;
     try {
       sourceGas = await this.estimateInitiateGas(req);
-    } catch {
+    } catch (err) {
       // If estimation fails, use conservative defaults
-      sourceGas = req.action.kind === "call" ? 150_000n : 200_000n;
-      warnings.push("Source gas estimation failed, using conservative estimate");
+      sourceGas =
+        req.action.kind === "call" ? DEFAULT_CALL_GAS : DEFAULT_TRANSFER_GAS;
+      warnings.push(
+        `Source gas estimation failed: ${err instanceof Error ? err.message : String(err)}. Using conservative estimate.`
+      );
     }
 
     // Get current gas price from Base
@@ -118,12 +155,9 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const sourceGasCost = sourceGas * gasPrice;
 
     // Estimate destination chain fees (Solana)
-    // Solana base tx fee: 5000 lamports per signature
-    // Prove tx: fixed cost (~5000 lamports base + minimal compute)
+    // Prove tx: base tx fee + minimal compute for prove operation
     // Execute tx: variable cost depending on user instructions
-    const SOLANA_BASE_TX_FEE = 5_000n;
-    const SOLANA_PROVE_COMPUTE = 5_000n; // Prove is a fixed operation
-    const proveFee = SOLANA_BASE_TX_FEE + SOLANA_PROVE_COMPUTE;
+    const proveFee = SOLANA_BASE_TX_FEE + SOLANA_PROVE_COMPUTE_LAMPORTS;
 
     // Execute fee depends on the instructions being run
     // We simulate the instructions to get accurate compute unit estimates
@@ -178,14 +212,12 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
         });
       }
       // Estimate gas for bridgeCall
-      // Base cost ~100k gas + ~5k per instruction
       const instructionCount = req.action.call.call.instructions.length;
-      return 100_000n + BigInt(instructionCount) * 5_000n;
+      return BRIDGE_CALL_BASE_GAS + BigInt(instructionCount) * GAS_PER_INSTRUCTION;
     }
 
     if (req.action.kind === "transfer") {
       // Estimate gas for bridgeToken
-      // Base cost ~150k gas, with call ~200k+
       const call = req.action.call;
       if (call) {
         if (!isSolanaDestinationCall(call)) {
@@ -195,12 +227,12 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
           });
         }
         const instructionCount = call.call.instructions.length;
-        return 150_000n + BigInt(instructionCount) * 5_000n;
+        return BRIDGE_TOKEN_BASE_GAS + BigInt(instructionCount) * GAS_PER_INSTRUCTION;
       }
-      return 150_000n;
+      return BRIDGE_TOKEN_BASE_GAS;
     }
 
-    return 150_000n;
+    return BRIDGE_TOKEN_BASE_GAS;
   }
 
   /**
@@ -211,13 +243,6 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     req: QuoteRequest,
     warnings: string[]
   ): Promise<bigint> {
-    const SOLANA_BASE_TX_FEE = 5_000n;
-    // Bridge execute overhead (CPI, account validation, etc.)
-    const BRIDGE_EXECUTE_OVERHEAD_CU = 50_000n;
-    // Lamports per compute unit (current Solana priority fee model)
-    // Base fee covers ~200k CU, additional CU cost ~1 microlamport each
-    const LAMPORTS_PER_CU = 1n; // Conservative: 1 microlamport per CU
-
     // Extract instructions from the request
     let instructions: SolanaInstruction[] = [];
     if (req.action.kind === "call") {
@@ -232,7 +257,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
     if (instructions.length === 0) {
       // No custom instructions, just the bridge execute overhead
-      return SOLANA_BASE_TX_FEE + 10_000n;
+      return SOLANA_BASE_TX_FEE + BASE_EXECUTE_FEE_LAMPORTS;
     }
 
     // Convert SDK instructions to @solana/kit Instruction format
@@ -248,7 +273,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       // Fee = base tx fee + compute budget fee
       // Note: This is a simplified model; actual fees depend on priority fee market
       const computeFee = (totalCU * LAMPORTS_PER_CU) / 1_000_000n; // microlamports to lamports
-      return SOLANA_BASE_TX_FEE + (computeFee > 0n ? computeFee : 5_000n);
+      return SOLANA_BASE_TX_FEE + (computeFee > 0n ? computeFee : MIN_COMPUTE_FEE_LAMPORTS);
     }
 
     // Simulation failed - fall back to heuristic
@@ -256,9 +281,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       `Could not simulate instructions; using heuristic estimate for ${instructions.length} instruction(s)`
     );
 
-    // Conservative fallback: 50k lamports per instruction
-    const LAMPORTS_PER_INSTRUCTION = 50_000n;
-    return SOLANA_BASE_TX_FEE + BigInt(instructions.length) * LAMPORTS_PER_INSTRUCTION;
+    return SOLANA_BASE_TX_FEE + BigInt(instructions.length) * FALLBACK_LAMPORTS_PER_INSTRUCTION;
   }
 
   /**
@@ -271,11 +294,11 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
         address: solAddress(acc.pubkey),
         role: acc.isSigner
           ? acc.isWritable
-            ? 3 // AccountRole.WRITABLE_SIGNER
-            : 2 // AccountRole.READONLY_SIGNER
+            ? AccountRole.WRITABLE_SIGNER
+            : AccountRole.READONLY_SIGNER
           : acc.isWritable
-            ? 1 // AccountRole.WRITABLE
-            : 0, // AccountRole.READONLY
+            ? AccountRole.WRITABLE
+            : AccountRole.READONLY,
       })),
       data:
         ix.data instanceof Uint8Array
