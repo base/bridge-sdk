@@ -164,6 +164,55 @@ export class SolanaEngine {
     return await fetchOutgoingMessage(rpc, pubkey);
   }
 
+  /**
+   * Fetches gas configuration from both bridge and relayer programs.
+   * Used for quote estimation.
+   */
+  async getGasConfigs(): Promise<{
+    bridgeGasConfig: {
+      gasCostScaler: bigint;
+      gasCostScalerDp: bigint;
+      gasPerCall: bigint;
+    };
+    relayerGasConfig: {
+      minGasLimitPerMessage: bigint;
+      maxGasLimitPerMessage: bigint;
+      gasCostScaler: bigint;
+      gasCostScalerDp: bigint;
+    };
+  }> {
+    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+
+    const [bridgeAddress] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.bridgeProgram,
+      seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
+    });
+
+    const [cfgAddress] = await getProgramDerivedAddress({
+      programAddress: this.config.solana.relayerProgram,
+      seeds: [Buffer.from(getRelayerIdlConstant("CFG_SEED"))],
+    });
+
+    const [bridge, cfg] = await Promise.all([
+      fetchBridge(rpc, bridgeAddress),
+      fetchCfg(rpc, cfgAddress),
+    ]);
+
+    return {
+      bridgeGasConfig: {
+        gasCostScaler: bridge.data.gasConfig.gasCostScaler,
+        gasCostScalerDp: bridge.data.gasConfig.gasCostScalerDp,
+        gasPerCall: bridge.data.gasConfig.gasPerCall,
+      },
+      relayerGasConfig: {
+        minGasLimitPerMessage: cfg.data.gasConfig.minGasLimitPerMessage,
+        maxGasLimitPerMessage: cfg.data.gasConfig.maxGasLimitPerMessage,
+        gasCostScaler: cfg.data.gasConfig.gasCostScaler,
+        gasCostScalerDp: cfg.data.gasConfig.gasCostScalerDp,
+      },
+    };
+  }
+
   async bridgeSol(opts: BridgeSolOpts): Promise<SolAddress> {
     return await this.executeBridgeOp(
       opts.payForRelay,

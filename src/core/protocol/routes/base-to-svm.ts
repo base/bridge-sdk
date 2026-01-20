@@ -21,6 +21,8 @@ import type {
   MonitorOptions,
   ProveOptions,
   ProveResult,
+  Quote,
+  QuoteRequest,
   RouteAdapter,
   RouteCapabilities,
   SolanaInstruction,
@@ -93,7 +95,103 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       autoRelay: false,
       manualExecute: true,
       prove: true,
+      supportsQuote: true,
     };
+  }
+
+  async quote(req: QuoteRequest): Promise<Quote> {
+    const warnings: string[] = [];
+
+    // Estimate source chain fees (Base EVM gas)
+    // We estimate gas for the bridgeCall or bridgeToken operation
+    let sourceGas: bigint;
+    try {
+      sourceGas = await this.estimateInitiateGas(req);
+    } catch {
+      // If estimation fails, use conservative defaults
+      sourceGas = req.action.kind === "call" ? 150_000n : 200_000n;
+      warnings.push("Source gas estimation failed, using conservative estimate");
+    }
+
+    // Get current gas price from Base
+    const gasPrice = await this.evm.publicClient.getGasPrice();
+    const sourceGasCost = sourceGas * gasPrice;
+
+    // Estimate destination chain fees (Solana)
+    // Solana tx fees are fixed at 5000 lamports base + compute units
+    // Prove and execute are separate transactions
+    const proveExecuteFee = 15_000n; // ~15000 lamports for prove + execute
+
+    // Estimate timing for Base -> SVM
+    // - Base finality: ~2 seconds
+    // - Proof availability: depends on Solana bridge state updates
+    // - Prove + Execute: ~1-2 seconds each on Solana
+    // Total: ~1-5 minutes depending on bridge state sync
+    const estimatedTimeMs = {
+      min: 60_000, // 1 minute optimistic
+      max: 300_000, // 5 minutes conservative
+    };
+
+    const quote: Quote = {
+      route: req.route,
+      estimatedFees: {
+        source: {
+          amount: sourceGasCost,
+          token: "ETH",
+        },
+        destination: {
+          amount: proveExecuteFee,
+          token: "SOL",
+        },
+      },
+      estimatedTimeMs,
+    };
+
+    // Note: No auto-relay for Base -> SVM, so no relay fee
+    // User must manually prove and execute
+
+    if (warnings.length > 0) {
+      quote.warnings = warnings;
+    }
+
+    return quote;
+  }
+
+  /**
+   * Estimate gas for the initiate operation on Base.
+   */
+  private async estimateInitiateGas(req: QuoteRequest): Promise<bigint> {
+    if (req.action.kind === "call") {
+      if (!isSolanaDestinationCall(req.action.call)) {
+        throw new BridgeUnsupportedActionError({
+          route: req.route,
+          actionKind: "base->svm: call requires SolanaCall",
+        });
+      }
+      // Estimate gas for bridgeCall
+      // Base cost ~100k gas + ~5k per instruction
+      const instructionCount = req.action.call.call.instructions.length;
+      return 100_000n + BigInt(instructionCount) * 5_000n;
+    }
+
+    if (req.action.kind === "transfer") {
+      // Estimate gas for bridgeToken
+      // Base cost ~150k gas, with call ~200k+
+      const hasCall = req.action.call !== undefined;
+      if (hasCall) {
+        if (!isSolanaDestinationCall(req.action.call!)) {
+          throw new BridgeUnsupportedActionError({
+            route: req.route,
+            actionKind: "base->svm: transfer call requires SolanaCall",
+          });
+        }
+        const instructionCount = req.action.call!.call.instructions.length;
+        return 150_000n + BigInt(instructionCount) * 5_000n;
+      }
+      return 150_000n;
+    }
+
+    return 150_000n;
   }
 
   async initiate(req: BridgeRequest): Promise<BridgeOperation> {

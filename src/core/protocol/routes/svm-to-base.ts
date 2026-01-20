@@ -19,6 +19,8 @@ import type {
   MonitorOptions,
   ProveOptions,
   ProveResult,
+  Quote,
+  QuoteRequest,
   RouteAdapter,
   RouteCapabilities,
   StatusOptions,
@@ -93,7 +95,113 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       autoRelay: true,
       manualExecute: this.evm.hasSigner,
       prove: false,
+      supportsQuote: true,
     };
+  }
+
+  async quote(req: QuoteRequest): Promise<Quote> {
+    const gasLimit = req.relay?.gasLimit ?? 100_000n;
+    const relayMode = req.relay?.mode ?? "auto";
+    const warnings: string[] = [];
+
+    // Fetch on-chain config for fee estimation
+    const { bridgeGasConfig, relayerGasConfig } =
+      await this.solanaEngine.getGasConfigs();
+
+    // Estimate source chain fees (Solana transaction fees)
+    // Base Solana tx fee is 5000 lamports, but complex bridge ops may need more
+    // This is a conservative estimate for bridge operations
+    const baseTxFee = 5_000n; // 5000 lamports base fee
+    const computeUnitBuffer = 10_000n; // Additional compute unit costs
+    const sourceGasFee = baseTxFee + computeUnitBuffer;
+
+    // Calculate relay fee if auto-relay is requested
+    let relayFee: bigint | undefined;
+    if (relayMode === "auto") {
+      // Relay fee calculation: (gasLimit * gasCostScaler) / gasCostScalerDp
+      // This converts EVM gas to lamports based on current pricing
+      relayFee =
+        (gasLimit * relayerGasConfig.gasCostScaler) /
+        relayerGasConfig.gasCostScalerDp;
+
+      // Validate gas limit is within allowed bounds
+      if (gasLimit < relayerGasConfig.minGasLimitPerMessage) {
+        warnings.push(
+          `Gas limit ${gasLimit} is below minimum ${relayerGasConfig.minGasLimitPerMessage}`
+        );
+      }
+      if (gasLimit > relayerGasConfig.maxGasLimitPerMessage) {
+        warnings.push(
+          `Gas limit ${gasLimit} exceeds maximum ${relayerGasConfig.maxGasLimitPerMessage}`
+        );
+      }
+    }
+
+    // Estimate destination chain fees (Base execution)
+    // For SVM -> Base, the relayer pays the destination gas
+    // Users only pay the relay fee upfront on Solana
+    let destinationGas: bigint | undefined;
+    if (req.action.kind === "call") {
+      const evmCall = this.extractEvmCall(req.action.call);
+      try {
+        destinationGas = await this.baseEngine.estimateGasForCall({
+          to: evmCall.to,
+          value: evmCall.value,
+          data: evmCall.data,
+        });
+      } catch {
+        // Gas estimation may fail if call would revert, use default
+        destinationGas = gasLimit;
+        warnings.push("Destination gas estimation failed, using provided limit");
+      }
+    } else if (req.action.kind === "transfer") {
+      // Transfer operations have predictable gas costs on Base
+      // Base cost for token transfer: ~65k gas, with call: ~100k+
+      destinationGas = req.action.call ? gasLimit : 65_000n;
+    }
+
+    // Estimate timing
+    // SVM -> Base timing:
+    // - Solana finality: ~400ms (optimistic), ~12s (finalized)
+    // - Validator approval: ~30-60s
+    // - Base execution: ~2s
+    const estimatedTimeMs = {
+      min: 30_000, // 30 seconds optimistic
+      max: 120_000, // 2 minutes conservative
+    };
+
+    const quote: Quote = {
+      route: req.route,
+      estimatedFees: {
+        source: {
+          amount: sourceGasFee + (relayFee ?? 0n),
+          token: "SOL",
+        },
+      },
+      estimatedTimeMs,
+    };
+
+    // Add destination fee info (informational - paid by relayer)
+    if (destinationGas !== undefined) {
+      quote.estimatedFees.destination = {
+        amount: destinationGas,
+        token: "ETH (paid by relayer)",
+      };
+    }
+
+    // Add relay fee breakdown if applicable
+    if (relayMode === "auto" && relayFee !== undefined) {
+      quote.estimatedFees.relay = {
+        amount: relayFee,
+        token: "SOL",
+      };
+    }
+
+    if (warnings.length > 0) {
+      quote.warnings = warnings;
+    }
+
+    return quote;
   }
 
   async initiate(req: BridgeRequest): Promise<BridgeOperation> {

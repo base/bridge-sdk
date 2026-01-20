@@ -170,6 +170,59 @@ export interface BridgeOperation {
   initiationTx?: string;
 }
 
+/**
+ * Request type for getting a quote without committing to a transaction.
+ * Mirrors BridgeRequest but is used for estimation purposes only.
+ */
+export interface QuoteRequest {
+  route: BridgeRoute;
+  action: BridgeAction;
+  relay?: RelayOptions;
+}
+
+/**
+ * Fee estimate for a specific component of the bridge operation.
+ */
+export interface FeeEstimate {
+  /** Fee amount in the token's smallest unit */
+  amount: bigint;
+  /** Token identifier (e.g., "ETH", "SOL", or token address) */
+  token: string;
+}
+
+/**
+ * Quote response containing estimated fees, timing, and limits.
+ */
+export interface Quote {
+  /** The route this quote applies to */
+  route: BridgeRoute;
+  /** Estimated fees for the bridge operation */
+  estimatedFees: {
+    /** Fee on the source chain (gas for initiation) */
+    source: FeeEstimate;
+    /** Fee on the destination chain (execution gas), if applicable */
+    destination?: FeeEstimate;
+    /** Relay fee (protocol fee for auto-relay), if applicable */
+    relay?: FeeEstimate;
+  };
+  /** Estimated time to completion in milliseconds */
+  estimatedTimeMs: {
+    /** Minimum expected time */
+    min: number;
+    /** Maximum expected time */
+    max: number;
+  };
+  /** Token transfer limits, if applicable */
+  limits?: {
+    /** Minimum transfer amount */
+    min: bigint;
+    /** Maximum transfer amount */
+    max: bigint;
+  };
+  /** Warnings about the quote (e.g., high fees, low liquidity) */
+  warnings?: string[];
+}
+
 export interface ResolvedRoute {
   route: BridgeRoute;
 }
@@ -252,12 +305,14 @@ export type RouteStep = "initiate" | "prove" | "execute" | "monitor";
 export interface RouteCapabilities {
   /** Ordered steps that apply for this route, given the current config. */
   steps: RouteStep[];
-  /** Whether the route supports auto-relay on destination (e.g., “payForRelay”). */
+  /** Whether the route supports auto-relay on destination (e.g., "payForRelay"). */
   autoRelay?: boolean;
   /** Whether manual execution is supported by this SDK config (e.g., destination signer present). */
   manualExecute?: boolean;
   /** Whether proof generation is supported by this SDK config (RPC access, contracts present). */
   prove?: boolean;
+  /** Whether the route supports quote estimation (fee, time, limits). */
+  supportsQuote?: boolean;
   /** Protocol constraints that affect retries / monitoring windows. */
   constraints?: {
     /** If provided, an estimate of time until the message can be proven/executed. */
@@ -280,6 +335,12 @@ export interface ChainAdapter {
 export interface RouteAdapter {
   readonly route: BridgeRoute;
   capabilities(): Promise<RouteCapabilities>;
+  /**
+   * Get a quote for the given request without committing to a transaction.
+   * Returns estimated fees, timing, and limits.
+   * If not supported, the adapter MUST throw `BridgeUnsupportedStepError`.
+   */
+  quote(req: QuoteRequest): Promise<Quote>;
   initiate(req: BridgeRequest): Promise<BridgeOperation>;
   /**
    * Optional steps. If a step is not supported, the adapter MUST throw

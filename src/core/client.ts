@@ -20,6 +20,8 @@ import type {
   MonitorOptions,
   ProveOptions,
   ProveResult,
+  Quote,
+  QuoteRequest,
   ResolvedRoute,
   RouteAdapter,
   RouteCapabilities,
@@ -65,6 +67,9 @@ export interface BridgeClient {
   transfer(req: TransferRequestInput): Promise<BridgeOperation>;
   call(req: CallRequestInput): Promise<BridgeOperation>;
   request(req: BridgeRequest): Promise<BridgeOperation>;
+
+  /** Quote estimation (get fees, timing, limits without committing) */
+  quote(req: QuoteRequest): Promise<Quote>;
 
   /** Step execution (route-dependent; see capabilities) */
   prove(ref: MessageRef, opts?: ProveOptions): Promise<ProveResult>;
@@ -148,6 +153,14 @@ class DefaultBridgeClient implements BridgeClient {
       `bridge.request: initiating ${req.route.sourceChain} -> ${req.route.destinationChain}`
     );
     return await adapter.initiate(req);
+  }
+
+  async quote(req: QuoteRequest): Promise<Quote> {
+    const adapter = await this.getRouteAdapter(req.route);
+    this.logger.debug(
+      `bridge.quote: estimating ${req.route.sourceChain} -> ${req.route.destinationChain}`
+    );
+    return await adapter.quote(req);
   }
 
   async prove(ref: MessageRef, opts?: ProveOptions): Promise<ProveResult> {
