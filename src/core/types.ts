@@ -188,6 +188,8 @@ export interface FeeEstimate {
   amount: bigint;
   /** Token identifier (e.g., "ETH", "SOL", or token address) */
   token: string;
+  /** Optional note about this fee (e.g., "paid by relayer", "informational only") */
+  note?: string;
 }
 
 /**

@@ -185,7 +185,8 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     if (destinationGas !== undefined) {
       quote.estimatedFees.destination = {
         amount: destinationGas,
-        token: "ETH (paid by relayer)",
+        token: "ETH",
+        note: "paid by relayer",
       };
     }
 

@@ -1,4 +1,4 @@
-import type { Address as SolAddress } from "@solana/kit";
+import type { Address as SolAddress, Instruction } from "@solana/kit";
 import { address as solAddress } from "@solana/kit";
 import type { Hash, Hex } from "viem";
 import { decodeEventLog, toBytes } from "viem";
@@ -118,9 +118,17 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const sourceGasCost = sourceGas * gasPrice;
 
     // Estimate destination chain fees (Solana)
-    // Solana tx fees are fixed at 5000 lamports base + compute units
-    // Prove and execute are separate transactions
-    const proveExecuteFee = 15_000n; // ~15000 lamports for prove + execute
+    // Solana base tx fee: 5000 lamports per signature
+    // Prove tx: fixed cost (~5000 lamports base + minimal compute)
+    // Execute tx: variable cost depending on user instructions
+    const SOLANA_BASE_TX_FEE = 5_000n;
+    const SOLANA_PROVE_COMPUTE = 5_000n; // Prove is a fixed operation
+    const proveFee = SOLANA_BASE_TX_FEE + SOLANA_PROVE_COMPUTE;
+
+    // Execute fee depends on the instructions being run
+    // We simulate the instructions to get accurate compute unit estimates
+    const executeFee = await this.estimateExecuteFee(req, warnings);
+    const destinationFee = proveFee + executeFee;
 
     // Estimate timing for Base -> SVM
     // - Base finality: ~2 seconds
@@ -140,8 +148,9 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
           token: "ETH",
         },
         destination: {
-          amount: proveExecuteFee,
+          amount: destinationFee,
           token: "SOL",
+          note: "estimate varies based on instruction complexity",
         },
       },
       estimatedTimeMs,
@@ -177,21 +186,102 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     if (req.action.kind === "transfer") {
       // Estimate gas for bridgeToken
       // Base cost ~150k gas, with call ~200k+
-      const hasCall = req.action.call !== undefined;
-      if (hasCall) {
-        if (!isSolanaDestinationCall(req.action.call!)) {
+      const call = req.action.call;
+      if (call) {
+        if (!isSolanaDestinationCall(call)) {
           throw new BridgeUnsupportedActionError({
             route: req.route,
             actionKind: "base->svm: transfer call requires SolanaCall",
           });
         }
-        const instructionCount = req.action.call!.call.instructions.length;
+        const instructionCount = call.call.instructions.length;
         return 150_000n + BigInt(instructionCount) * 5_000n;
       }
       return 150_000n;
     }
 
     return 150_000n;
+  }
+
+  /**
+   * Estimate Solana execute transaction fee by simulating the instructions.
+   * Falls back to heuristic estimation if simulation fails.
+   */
+  private async estimateExecuteFee(
+    req: QuoteRequest,
+    warnings: string[]
+  ): Promise<bigint> {
+    const SOLANA_BASE_TX_FEE = 5_000n;
+    // Bridge execute overhead (CPI, account validation, etc.)
+    const BRIDGE_EXECUTE_OVERHEAD_CU = 50_000n;
+    // Lamports per compute unit (current Solana priority fee model)
+    // Base fee covers ~200k CU, additional CU cost ~1 microlamport each
+    const LAMPORTS_PER_CU = 1n; // Conservative: 1 microlamport per CU
+
+    // Extract instructions from the request
+    let instructions: SolanaInstruction[] = [];
+    if (req.action.kind === "call") {
+      if (isSolanaDestinationCall(req.action.call)) {
+        instructions = req.action.call.call.instructions;
+      }
+    } else if (req.action.kind === "transfer" && req.action.call) {
+      if (isSolanaDestinationCall(req.action.call)) {
+        instructions = req.action.call.call.instructions;
+      }
+    }
+
+    if (instructions.length === 0) {
+      // No custom instructions, just the bridge execute overhead
+      return SOLANA_BASE_TX_FEE + 10_000n;
+    }
+
+    // Convert SDK instructions to @solana/kit Instruction format
+    const solanaInstructions = this.convertToInstruction(instructions);
+
+    // Try to simulate to get accurate compute units
+    const computeUnits =
+      await this.solanaEngine.simulateInstructions(solanaInstructions);
+
+    if (computeUnits !== undefined) {
+      // Simulation succeeded - calculate fee based on actual compute units
+      const totalCU = computeUnits + BRIDGE_EXECUTE_OVERHEAD_CU;
+      // Fee = base tx fee + compute budget fee
+      // Note: This is a simplified model; actual fees depend on priority fee market
+      const computeFee = (totalCU * LAMPORTS_PER_CU) / 1_000_000n; // microlamports to lamports
+      return SOLANA_BASE_TX_FEE + (computeFee > 0n ? computeFee : 5_000n);
+    }
+
+    // Simulation failed - fall back to heuristic
+    warnings.push(
+      `Could not simulate instructions; using heuristic estimate for ${instructions.length} instruction(s)`
+    );
+
+    // Conservative fallback: 50k lamports per instruction
+    const LAMPORTS_PER_INSTRUCTION = 50_000n;
+    return SOLANA_BASE_TX_FEE + BigInt(instructions.length) * LAMPORTS_PER_INSTRUCTION;
+  }
+
+  /**
+   * Convert SDK SolanaInstruction[] to @solana/kit Instruction[] for simulation.
+   */
+  private convertToInstruction(instructions: SolanaInstruction[]): Instruction[] {
+    return instructions.map((ix) => ({
+      programAddress: solAddress(ix.programId),
+      accounts: ix.accounts.map((acc) => ({
+        address: solAddress(acc.pubkey),
+        role: acc.isSigner
+          ? acc.isWritable
+            ? 3 // AccountRole.WRITABLE_SIGNER
+            : 2 // AccountRole.READONLY_SIGNER
+          : acc.isWritable
+            ? 1 // AccountRole.WRITABLE
+            : 0, // AccountRole.READONLY
+      })),
+      data:
+        ix.data instanceof Uint8Array
+          ? ix.data
+          : toBytes(ix.data as `0x${string}`),
+    })) as Instruction[];
   }
 
   async initiate(req: BridgeRequest): Promise<BridgeOperation> {
