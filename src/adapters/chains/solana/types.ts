@@ -6,7 +6,7 @@ import type {
 import type { ChainAdapter, ChainRef } from "../../../core/types";
 import type { OutgoingMessage } from "../../../clients/ts/src/bridge";
 
-export type SolanaPayerConfig = { type: "keypairPath"; path: string };
+export type SolanaPayerConfig = { type: "signer"; signer: KeyPairSigner };
 
 export interface SolanaAdapterConfig {
   rpcUrl: string;
@@ -19,8 +19,8 @@ export interface SolanaChainAdapter extends ChainAdapter {
   readonly chain: ChainRef;
   readonly kind: "solana";
   readonly rpcUrl: string;
-  /** Original payer keypair path (expanded). */
-  readonly payerKeypairPath: string;
+  /** Original payer keypair path (expanded). Only present when keypairPath config was used. */
+  readonly payerKeypairPath?: string;
   readonly payer: KeyPairSigner;
 
   fetchOutgoingMessage(

@@ -107,7 +107,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const engineConfig: EngineConfig = {
       solana: {
         rpcUrl: this.solana.rpcUrl,
-        payerKp: this.solana.payerKeypairPath,
+        payer: this.solana.payer,
         bridgeProgram: this.solanaDeployment.bridgeProgram,
         relayerProgram: this.solanaDeployment.relayerProgram,
       },

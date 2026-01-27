@@ -1,5 +1,8 @@
 import { createBridgeClient } from "../src";
-import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
+import {
+  loadSolanaKeypair,
+  makeSolanaAdapter,
+} from "../src/adapters/chains/solana/adapter";
 import { makeEvmAdapter } from "../src/adapters/chains/evm/adapter";
 import { BASE_MAINNET_CHAIN_ID } from "../src/core/protocol/router";
 
@@ -11,6 +14,8 @@ import { BASE_MAINNET_CHAIN_ID } from "../src/core/protocol/router";
  * by the bridge program on Solana.
  */
 async function main() {
+  const payer = await loadSolanaKeypair("~/.config/solana/id.json");
+
   const client = createBridgeClient({
     chains: {
       [BASE_MAINNET_CHAIN_ID]: makeEvmAdapter({
@@ -18,9 +23,9 @@ async function main() {
         rpcUrl: "https://mainnet.base.org",
         wallet: { type: "privateKey", key: "0xYOUR_PRIVATE_KEY" },
       }),
-      "solana:mainnet": await makeSolanaAdapter({
+      "solana:mainnet": makeSolanaAdapter({
         rpcUrl: "https://api.mainnet-beta.solana.com",
-        payer: { type: "keypairPath", path: "~/.config/solana/id.json" },
+        payer: { type: "signer", signer: payer },
         chain: { id: "solana:mainnet" },
       }),
     },

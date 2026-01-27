@@ -33,7 +33,7 @@ test("base-bridge: buildEvmIncomingMessage matches legacy BaseEngine hashing", (
     config: {
       solana: {
         rpcUrl: "http://localhost",
-        payerKp: "__unused__",
+        payer: "__unused__",
         bridgeProgram: solAddress("11111111111111111111111111111111"),
         relayerProgram: solAddress("11111111111111111111111111111111"),
       },

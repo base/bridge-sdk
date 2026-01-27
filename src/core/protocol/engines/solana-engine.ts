@@ -526,7 +526,7 @@ export class SolanaEngine {
   ): Promise<{ signature?: Signature; messageHash: Hash }> {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
-    const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
+    const payer = await this.resolvePayerKeypair(this.config.solana.payer);
 
     const [bridgeAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.bridgeProgram,
@@ -578,7 +578,7 @@ export class SolanaEngine {
   async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
-    const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
+    const payer = await this.resolvePayerKeypair(this.config.solana.payer);
 
     const [messagePda] = await getProgramDerivedAddress({
       programAddress: this.config.solana.bridgeProgram,
@@ -827,7 +827,7 @@ export class SolanaEngine {
 
   private async setupMessage(idempotencyKey?: string) {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
-    const payer = await this.resolvePayerKeypair(this.config.solana.payerKp);
+    const payer = await this.resolvePayerKeypair(this.config.solana.payer);
 
     const [bridgeAccountAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.bridgeProgram,
@@ -883,12 +883,17 @@ export class SolanaEngine {
     return outgoingMessage;
   }
 
-  private async resolvePayerKeypair(payerKpArg: string) {
-    if (payerKpArg === "config") {
+  private async resolvePayerKeypair(payerArg: string | KeyPairSigner) {
+    // If already a signer, return it directly
+    if (typeof payerArg !== "string") {
+      return payerArg;
+    }
+
+    if (payerArg === "config") {
       return await this.getSolanaCliConfigKeypairSigner();
     }
 
-    return await this.getKeypairSignerFromPath(payerKpArg);
+    return await this.getKeypairSignerFromPath(payerArg);
   }
 
   private async getSolanaCliConfigKeypairSigner() {
