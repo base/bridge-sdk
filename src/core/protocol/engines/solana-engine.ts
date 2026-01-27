@@ -1,5 +1,3 @@
-import { existsSync } from "fs";
-import { readFile } from "node:fs/promises";
 import {
   CallType,
   fetchBridge,
@@ -33,8 +31,6 @@ import {
   assertIsSendableTransaction,
   assertIsTransactionWithBlockhashLifetime,
   compileTransaction,
-  createKeyPairFromBytes,
-  createSignerFromKeyPair,
   createSolanaRpc,
   createSolanaRpcSubscriptions,
   createTransactionMessage,
@@ -62,8 +58,6 @@ import {
   type Signature,
 } from "@solana/kit";
 import { keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
-import { homedir } from "os";
-import { join } from "path";
 import {
   fetchCfg,
   getPayForRelayInstruction,
@@ -138,8 +132,6 @@ export interface WrapTokenOpts {
 
 export class SolanaEngine {
   private readonly config: EngineConfig;
-  private keypairSignerCache = new Map<string, KeyPairSigner>();
-  private signer: KeyPairSigner | null = null;
 
   constructor(opts: SolanaEngineOpts) {
     this.config = opts.config;
@@ -526,7 +518,7 @@ export class SolanaEngine {
   ): Promise<{ signature?: Signature; messageHash: Hash }> {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
-    const payer = await this.resolvePayerKeypair(this.config.solana.payer);
+    const payer = this.config.solana.payer;
 
     const [bridgeAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.bridgeProgram,
@@ -578,7 +570,7 @@ export class SolanaEngine {
   async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
-    const payer = await this.resolvePayerKeypair(this.config.solana.payer);
+    const payer = this.config.solana.payer;
 
     const [messagePda] = await getProgramDerivedAddress({
       programAddress: this.config.solana.bridgeProgram,
@@ -827,7 +819,7 @@ export class SolanaEngine {
 
   private async setupMessage(idempotencyKey?: string) {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
-    const payer = await this.resolvePayerKeypair(this.config.solana.payer);
+    const payer = this.config.solana.payer;
 
     const [bridgeAccountAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.bridgeProgram,
@@ -881,52 +873,6 @@ export class SolanaEngine {
 
     await this.buildAndSendTransaction(ixs, payer);
     return outgoingMessage;
-  }
-
-  private async resolvePayerKeypair(payerArg: string | KeyPairSigner) {
-    // If already a signer, return it directly
-    if (typeof payerArg !== "string") {
-      return payerArg;
-    }
-
-    if (payerArg === "config") {
-      return await this.getSolanaCliConfigKeypairSigner();
-    }
-
-    return await this.getKeypairSignerFromPath(payerArg);
-  }
-
-  private async getSolanaCliConfigKeypairSigner() {
-    if (this.signer) {
-      return this.signer;
-    }
-
-    const homeDir = homedir();
-    const keypairPath = join(homeDir, ".config/solana/id.json");
-    if (!existsSync(keypairPath)) {
-      throw new Error(`Solana CLI config keypair not found at: ${keypairPath}`);
-    }
-
-    this.signer = await this.getKeypairSignerFromPath(keypairPath);
-    return this.signer;
-  }
-
-  private async getKeypairSignerFromPath(keypairPath: string) {
-    if (this.keypairSignerCache.has(keypairPath)) {
-      return this.keypairSignerCache.get(keypairPath)!;
-    }
-
-    if (!existsSync(keypairPath)) {
-      throw new Error(`Keypair not found at: ${keypairPath}`);
-    }
-
-    const keypairJson = await readFile(keypairPath, "utf8");
-    const keypairBytes = new Uint8Array(JSON.parse(keypairJson));
-    const keypair = await createKeyPairFromBytes(keypairBytes);
-    const signer = await createSignerFromKeyPair(keypair);
-    this.keypairSignerCache.set(keypairPath, signer);
-
-    return signer;
   }
 
   private async solVaultPubkey() {

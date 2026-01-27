@@ -19,8 +19,6 @@ export interface SolanaChainAdapter extends ChainAdapter {
   readonly chain: ChainRef;
   readonly kind: "solana";
   readonly rpcUrl: string;
-  /** Original payer keypair path (expanded). Only present when keypairPath config was used. */
-  readonly payerKeypairPath?: string;
   readonly payer: KeyPairSigner;
 
   fetchOutgoingMessage(

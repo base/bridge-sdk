@@ -33,15 +33,18 @@ bun run build
 ```ts
 import { createBridgeClient } from "./bridge-sdk";
 import { base, solanaMainnet } from "./bridge-sdk/chains";
-import { makeSolanaAdapter } from "./your-adapters/solana";
+import { loadSolanaKeypair, makeSolanaAdapter } from "./your-adapters/solana";
 import { makeEvmAdapter } from "./your-adapters/evm";
 
 async function main() {
+  // Pre-load the Solana keypair before creating the adapter
+  const payer = await loadSolanaKeypair("~/.config/solana/id.json");
+
   const client = createBridgeClient({
     chains: {
-      solana: await makeSolanaAdapter({
+      solana: makeSolanaAdapter({
         rpcUrl: "https://api.mainnet-beta.solana.com",
-        payer: { type: "keypairPath", path: "~/.config/solana/id.json" },
+        payer: { type: "signer", signer: payer },
         chain: solanaMainnet,
       }),
       base: makeEvmAdapter({

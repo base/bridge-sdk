@@ -22,8 +22,8 @@ export interface CallParams {
 
 export interface SolanaConfig {
   rpcUrl: string;
-  /** Either a file path to a keypair JSON or a pre-loaded KeyPairSigner */
-  payer: string | KeyPairSigner;
+  /** Pre-loaded KeyPairSigner for transaction signing */
+  payer: KeyPairSigner;
   bridgeProgram: Address;
   relayerProgram: Address;
 }
