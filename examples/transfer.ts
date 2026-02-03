@@ -1,10 +1,8 @@
 import { createBridgeClient } from "../src";
 import { base, solanaMainnet } from "../src/chains";
-import {
-  loadSolanaKeypair,
-  makeSolanaAdapter,
-} from "../src/adapters/chains/solana/adapter";
+import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
 import { makeEvmAdapter } from "../src/adapters/chains/evm/adapter";
+import { loadSolanaKeypair } from "../src/node";
 
 // Example: Solana -> Base (EVM) transfer (native SOL)
 async function main() {

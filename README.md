@@ -24,7 +24,7 @@ bun run build
 - **Composable primitives**: `transfer`, `call`, `request`, plus `prove`, `execute`, `status`, and `monitor`.
 - **Canonical message identity**: a single `MessageRef` model with stable source identity and optional derived destination ids.
 - **Capability-driven UX**: `capabilities(route)` tells you which steps apply for a route.
-- **Runtime-agnostic**: Compatible with standard Node.js environments (no Bun-only APIs).
+- **Browser/Edge compatible**: Core SDK works in browsers, edge runtimes, and Node.js. Node.js-specific utilities available via `/node` subpath.
 
 ## Usage Example
 
@@ -32,12 +32,16 @@ bun run build
 
 ```ts
 import { createBridgeClient } from "./bridge-sdk";
-import { base, solanaMainnet } from "./bridge-sdk/chains";
-import { loadSolanaKeypair, makeSolanaAdapter } from "./your-adapters/solana";
-import { makeEvmAdapter } from "./your-adapters/evm";
+import {
+  base,
+  solanaMainnet,
+  makeSolanaAdapter,
+  makeEvmAdapter,
+} from "./bridge-sdk/chains";
+import { loadSolanaKeypair } from "./bridge-sdk/node"; // Node.js only
 
 async function main() {
-  // Pre-load the Solana keypair before creating the adapter
+  // Pre-load the Solana keypair before creating the adapter (Node.js only)
   const payer = await loadSolanaKeypair("~/.config/solana/id.json");
 
   const client = createBridgeClient({
