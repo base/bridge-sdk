@@ -8,14 +8,40 @@ function sleep(ms: number, signal?: AbortSignal) {
       reject(signal.reason);
       return;
     }
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(signal.reason);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal!.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) {
+      promise.catch(() => {});
+      reject(signal.reason);
+      return;
+    }
+    const onAbort = () => {
+      promise.catch(() => {});
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
       },
-      { once: true }
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      }
     );
   });
 }
@@ -52,7 +78,7 @@ function stableStatusKey(s: ExecutionStatus): string {
  * subscription/indexer implementation.
  */
 export async function* pollingMonitor(
-  getStatus: () => Promise<ExecutionStatus>,
+  getStatus: (signal?: AbortSignal) => Promise<ExecutionStatus>,
   opts: MonitorOptions = {}
 ): AsyncIterable<ExecutionStatus> {
   const timeoutMs = opts.timeoutMs ?? 60_000;
@@ -75,7 +101,7 @@ export async function* pollingMonitor(
 
     signal?.throwIfAborted();
 
-    const next = await getStatus();
+    const next = await raceAbort(getStatus(signal), signal);
 
     if (prev && !isAllowedTransition(prev.type, next.type)) {
       throw new BridgeInvariantViolationError(

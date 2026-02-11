@@ -540,7 +540,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
   async status(
     ref: MessageRef,
-    _opts?: StatusOptions
+    opts?: StatusOptions
   ): Promise<ExecutionStatus> {
     const at = Date.now();
     const messageHash =
@@ -557,7 +557,9 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const { fetchMaybeIncomingMessage } = await import(
       "../../../clients/ts/src/bridge"
     );
-    const maybe = await fetchMaybeIncomingMessage(rpc, pda);
+    const maybe = await fetchMaybeIncomingMessage(rpc, pda, {
+      abortSignal: opts?.signal,
+    });
 
     if (!maybe.exists) {
       return { type: "Initiated", at, sourceTx: ref.derived?.txHash };
@@ -574,7 +576,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     ref: MessageRef,
     opts?: MonitorOptions
   ): AsyncIterable<ExecutionStatus> {
-    return pollingMonitor(() => this.status(ref), opts);
+    return pollingMonitor((signal) => this.status(ref, { signal }), opts);
   }
 
   private async deriveIncomingMessagePda(

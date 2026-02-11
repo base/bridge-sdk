@@ -443,7 +443,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
 
   async status(
     ref: MessageRef,
-    _opts?: StatusOptions
+    opts?: StatusOptions
   ): Promise<ExecutionStatus> {
     const at = Date.now();
 
@@ -492,7 +492,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     ref: MessageRef,
     opts?: MonitorOptions
   ): AsyncIterable<ExecutionStatus> {
-    return pollingMonitor(() => this.status(ref), opts);
+    return pollingMonitor((signal) => this.status(ref, { signal }), opts);
   }
 
   private async deriveOuterHash(

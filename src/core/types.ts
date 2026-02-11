@@ -248,7 +248,10 @@ export interface ExecuteResult {
   executionTx?: string;
 }
 
-export interface StatusOptions {}
+export interface StatusOptions {
+  /** Optional AbortSignal to cancel the status RPC call. */
+  signal?: AbortSignal;
+}
 
 export interface MonitorOptions {
   timeoutMs?: number;
