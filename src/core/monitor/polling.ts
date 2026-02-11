@@ -2,8 +2,22 @@ import { isAllowedTransition, isTerminalStatus } from "../capabilities";
 import { BridgeInvariantViolationError, BridgeTimeoutError } from "../errors";
 import type { ExecutionStatus, MonitorOptions } from "../types";
 
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      },
+      { once: true }
+    );
+  });
 }
 
 function stableStatusKey(s: ExecutionStatus): string {
@@ -43,6 +57,9 @@ export async function* pollingMonitor(
 ): AsyncIterable<ExecutionStatus> {
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const pollIntervalMs = opts.pollIntervalMs ?? 5_000;
+  const signal = opts.signal;
+
+  signal?.throwIfAborted();
 
   const start = Date.now();
 
@@ -55,6 +72,8 @@ export async function* pollingMonitor(
         stage: "monitor",
       });
     }
+
+    signal?.throwIfAborted();
 
     const next = await getStatus();
 
@@ -76,6 +95,6 @@ export async function* pollingMonitor(
       return;
     }
 
-    await sleep(pollIntervalMs);
+    await sleep(pollIntervalMs, signal);
   }
 }

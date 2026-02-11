@@ -253,6 +253,8 @@ export interface StatusOptions {}
 export interface MonitorOptions {
   timeoutMs?: number;
   pollIntervalMs?: number;
+  /** Optional AbortSignal to cancel monitoring from outside the consuming loop. */
+  signal?: AbortSignal;
 }
 
 export type MessageIdScheme =
