@@ -1,7 +1,7 @@
-import { address as solAddress, type Address as SolAddress } from "@solana/kit";
+import { type Address as SolAddress, address as solAddress } from "@solana/kit";
 import type { Hex } from "viem";
-import { BASE_MAINNET_CHAIN_ID, type BridgeConfig } from "./router";
 import type { ChainId } from "../types";
+import { BASE_MAINNET_CHAIN_ID, type BridgeConfig } from "./router";
 
 /**
  * Built-in bridge deployments bundled with the SDK.
@@ -38,7 +38,7 @@ function mergeSolanaDeployments(
         ChainId,
         Partial<{ bridgeProgram: SolAddress; relayerProgram: SolAddress }>
       >
-    | undefined
+    | undefined,
 ): Record<ChainId, { bridgeProgram: SolAddress; relayerProgram: SolAddress }> {
   if (!override) return base;
   const out: Record<
@@ -64,7 +64,7 @@ function mergeSolanaDeployments(
 
 function mergeEvmDeployments(
   base: Record<ChainId, { bridgeContract: Hex }>,
-  override?: Record<ChainId, Partial<{ bridgeContract: Hex }>> | undefined
+  override?: Record<ChainId, Partial<{ bridgeContract: Hex }>> | undefined,
 ): Record<ChainId, { bridgeContract: Hex }> {
   if (!override) return base;
   const out: Record<ChainId, { bridgeContract: Hex }> = { ...base };
@@ -82,16 +82,16 @@ function mergeEvmDeployments(
 }
 
 export function mergeBridgeDeployments(
-  overrides?: Partial<Deployments>
+  overrides?: Partial<Deployments>,
 ): Deployments {
   return {
     solana: mergeSolanaDeployments(
       DEFAULT_BRIDGE_DEPLOYMENTS.solana,
-      overrides?.solana as any
+      overrides?.solana as any,
     ),
     base: mergeEvmDeployments(
       DEFAULT_BRIDGE_DEPLOYMENTS.base,
-      overrides?.base as any
+      overrides?.base as any,
     ),
   };
 }

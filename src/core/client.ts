@@ -1,11 +1,11 @@
-import { NOOP_LOGGER, type Logger } from "../utils/logger";
+import { type Logger, NOOP_LOGGER } from "../utils/logger";
 import { BridgeUnsupportedRouteError } from "./errors";
+import { mergeBridgeDeployments } from "./protocol/deployments";
 import {
+  type BridgeConfig,
   resolveBridgeRoute,
   supportsBridgeRoute,
-  type BridgeConfig,
 } from "./protocol/router";
-import { mergeBridgeDeployments } from "./protocol/deployments";
 import type {
   BridgeOperation,
   BridgeRequest,
@@ -79,7 +79,7 @@ export interface BridgeClient {
   status(ref: MessageRef, opts?: StatusOptions): Promise<ExecutionStatus>;
   monitor(
     ref: MessageRef,
-    opts?: MonitorOptions
+    opts?: MonitorOptions,
   ): AsyncIterable<ExecutionStatus>;
 
   /** Discovery */
@@ -150,7 +150,7 @@ class DefaultBridgeClient implements BridgeClient {
   async request(req: BridgeRequest): Promise<BridgeOperation> {
     const adapter = await this.getRouteAdapter(req.route);
     this.logger.debug(
-      `bridge.request: initiating ${req.route.sourceChain} -> ${req.route.destinationChain}`
+      `bridge.request: initiating ${req.route.sourceChain} -> ${req.route.destinationChain}`,
     );
     return await adapter.initiate(req);
   }
@@ -158,7 +158,7 @@ class DefaultBridgeClient implements BridgeClient {
   async quote(req: QuoteRequest): Promise<Quote> {
     const adapter = await this.getRouteAdapter(req.route);
     this.logger.debug(
-      `bridge.quote: estimating ${req.route.sourceChain} -> ${req.route.destinationChain}`
+      `bridge.quote: estimating ${req.route.sourceChain} -> ${req.route.destinationChain}`,
     );
     return await adapter.quote(req);
   }
@@ -166,25 +166,25 @@ class DefaultBridgeClient implements BridgeClient {
   async prove(ref: MessageRef, opts?: ProveOptions): Promise<ProveResult> {
     const adapter = await this.getRouteAdapter(ref.route);
     this.logger.debug(
-      `bridge.prove: ${ref.route.sourceChain} -> ${ref.route.destinationChain}`
+      `bridge.prove: ${ref.route.sourceChain} -> ${ref.route.destinationChain}`,
     );
     return await adapter.prove(ref, opts);
   }
 
   async execute(
     ref: MessageRef,
-    opts?: ExecuteOptions
+    opts?: ExecuteOptions,
   ): Promise<ExecuteResult> {
     const adapter = await this.getRouteAdapter(ref.route);
     this.logger.debug(
-      `bridge.execute: ${ref.route.sourceChain} -> ${ref.route.destinationChain}`
+      `bridge.execute: ${ref.route.sourceChain} -> ${ref.route.destinationChain}`,
     );
     return await adapter.execute(ref, opts);
   }
 
   async status(
     ref: MessageRef,
-    opts?: StatusOptions
+    opts?: StatusOptions,
   ): Promise<ExecutionStatus> {
     const adapter = await this.getRouteAdapter(ref.route);
     return await adapter.status(ref, opts);
@@ -192,7 +192,7 @@ class DefaultBridgeClient implements BridgeClient {
 
   async *monitor(
     ref: MessageRef,
-    opts?: MonitorOptions
+    opts?: MonitorOptions,
   ): AsyncIterable<ExecutionStatus> {
     const adapter = await this.getRouteAdapter(ref.route);
     const merged: MonitorOptions = {
@@ -221,13 +221,13 @@ class DefaultBridgeClient implements BridgeClient {
     const existing = this.adapterCache.get(key);
     if (existing) {
       this.logger.debug(
-        `bridge.resolveRoute: cache hit for ${route.sourceChain} -> ${route.destinationChain}`
+        `bridge.resolveRoute: cache hit for ${route.sourceChain} -> ${route.destinationChain}`,
       );
       return existing;
     }
 
     this.logger.debug(
-      `bridge.resolveRoute: constructing adapter for ${route.sourceChain} -> ${route.destinationChain}`
+      `bridge.resolveRoute: constructing adapter for ${route.sourceChain} -> ${route.destinationChain}`,
     );
     const created = resolveBridgeRoute(route, this.chains, this.bridge);
     this.adapterCache.set(key, created);
@@ -241,7 +241,7 @@ export function createBridgeClient(config: BridgeClientConfig): BridgeClient {
     const id = adapter.chain.id;
     if (chains[id]) {
       throw new Error(
-        `Duplicate chain adapter registered for ${id}. Ensure each adapter has a unique chain id.`
+        `Duplicate chain adapter registered for ${id}. Ensure each adapter has a unique chain id.`,
       );
     }
     chains[id] = adapter;

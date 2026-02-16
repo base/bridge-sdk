@@ -1,14 +1,14 @@
-import { test, expect, describe } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type {
+  BridgeRoute,
+  DestinationCall,
   EvmCall,
   SolanaCall,
-  DestinationCall,
-  BridgeRoute,
 } from "../src/core/types";
 import {
-  isSolanaDestinationCall,
   isEvmDestinationCall,
   isSolanaChainId,
+  isSolanaDestinationCall,
   validateDestinationCall,
 } from "../src/core/utils";
 
@@ -118,14 +118,14 @@ describe("validateDestinationCall", () => {
   test("throws for SolanaCall to EVM destination", () => {
     const destCall: DestinationCall = { kind: "solana", call: solanaCall };
     expect(() => validateDestinationCall(destCall, evmRoute)).toThrow(
-      /route destination is EVM but call kind is "solana"/
+      /route destination is EVM but call kind is "solana"/,
     );
   });
 
   test("throws for EvmCall to SVM destination", () => {
     const destCall: DestinationCall = { kind: "evm", call: evmCall };
     expect(() => validateDestinationCall(destCall, svmRoute)).toThrow(
-      /route destination is Solana but call kind is "evm"/
+      /route destination is Solana but call kind is "evm"/,
     );
   });
 });

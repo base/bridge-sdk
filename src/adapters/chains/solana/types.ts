@@ -1,10 +1,10 @@
 import type {
   Account,
-  Address as SolAddress,
   KeyPairSigner,
+  Address as SolAddress,
 } from "@solana/kit";
-import type { ChainAdapter, ChainRef } from "../../../core/types";
 import type { OutgoingMessage } from "../../../clients/ts/src/bridge";
+import type { ChainAdapter, ChainRef } from "../../../core/types";
 
 export type SolanaPayerConfig = { type: "signer"; signer: KeyPairSigner };
 
@@ -22,6 +22,6 @@ export interface SolanaChainAdapter extends ChainAdapter {
   readonly payer: KeyPairSigner;
 
   fetchOutgoingMessage(
-    address: SolAddress
+    address: SolAddress,
   ): Promise<Account<OutgoingMessage, string>>;
 }

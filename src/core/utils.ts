@@ -10,7 +10,7 @@ import type {
  * Type guard for SolanaCall destination.
  */
 export function isSolanaDestinationCall(
-  call: DestinationCall
+  call: DestinationCall,
 ): call is { kind: "solana"; call: SolanaCall } {
   return call.kind === "solana";
 }
@@ -19,7 +19,7 @@ export function isSolanaDestinationCall(
  * Type guard for EVM destination call.
  */
 export function isEvmDestinationCall(
-  call: DestinationCall
+  call: DestinationCall,
 ): call is { kind: "evm"; call: EvmCall } {
   return call.kind === "evm";
 }
@@ -38,20 +38,20 @@ export function isSolanaChainId(chainId: ChainId): boolean {
  */
 export function validateDestinationCall(
   call: DestinationCall,
-  route: BridgeRoute
+  route: BridgeRoute,
 ): void {
   const isSvmDestination = isSolanaChainId(route.destinationChain);
 
   if (isSvmDestination && call.kind !== "solana") {
     throw new Error(
       `Call type mismatch: route destination is Solana but call kind is "${call.kind}". ` +
-        `Use { kind: "solana", call: SolanaCall } for Base -> SVM routes.`
+        `Use { kind: "solana", call: SolanaCall } for Base -> SVM routes.`,
     );
   }
   if (!isSvmDestination && call.kind !== "evm") {
     throw new Error(
       `Call type mismatch: route destination is EVM but call kind is "${call.kind}". ` +
-        `Use { kind: "evm", call: EvmCall } for SVM -> Base routes.`
+        `Use { kind: "evm", call: EvmCall } for SVM -> Base routes.`,
     );
   }
 }

@@ -1,41 +1,41 @@
 import {
-  getIxAccountEncoder,
-  type Call,
-  type Ix,
-  type fetchOutgoingMessage,
-  type OutgoingMessage,
-} from "../../../clients/ts/src/bridge";
-import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
-import { MessageType, type EngineConfig, type CallParams } from "./types";
-import {
-  getBase58Codec,
-  getBase58Encoder,
   type Account,
   type Address,
+  getBase58Codec,
+  getBase58Encoder,
 } from "@solana/kit";
-import { sleep } from "../../../utils/time";
 import {
   createPublicClient,
   createWalletClient,
   decodeEventLog,
   encodeAbiParameters,
-  http,
-  keccak256,
-  padHex,
-  toHex,
   type Hash,
   type Hex,
+  http,
+  keccak256,
   type PublicClient,
+  padHex,
+  toHex,
   type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import {
+  type Call,
+  type fetchOutgoingMessage,
+  getIxAccountEncoder,
+  type Ix,
+  type OutgoingMessage,
+} from "../../../clients/ts/src/bridge";
+import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
+import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
+import { type Logger, NOOP_LOGGER } from "../../../utils/logger";
+import { sleep } from "../../../utils/time";
 import {
   DEFAULT_EVM_GAS_LIMIT,
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
 } from "./constants";
-import { type Logger, NOOP_LOGGER } from "../../../utils/logger";
-import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
+import { type CallParams, type EngineConfig, MessageType } from "./types";
 
 export interface BaseEngineOpts {
   config: EngineConfig;
@@ -102,7 +102,7 @@ export class BaseEngine {
   async bridgeCall(opts: BaseBridgeCallOpts): Promise<Hash> {
     if (!this.walletClient || !this.config.base.privateKey) {
       throw new Error(
-        "Base wallet client not initialized (missing privateKey)"
+        "Base wallet client not initialized (missing privateKey)",
       );
     }
 
@@ -124,7 +124,7 @@ export class BaseEngine {
   async bridgeToken(opts: BaseBridgeTokenOpts): Promise<Hash> {
     if (!this.walletClient || !this.config.base.privateKey) {
       throw new Error(
-        "Base wallet client not initialized (missing privateKey)"
+        "Base wallet client not initialized (missing privateKey)",
       );
     }
 
@@ -164,7 +164,7 @@ export class BaseEngine {
       .map((log) => {
         if (blockNumber < log.blockNumber) {
           throw new Error(
-            `Solana bridge state is stale (behind transaction block). Bridge state block: ${blockNumber}, Transaction block: ${log.blockNumber}`
+            `Solana bridge state is stale (behind transaction block). Bridge state block: ${blockNumber}, Transaction block: ${log.blockNumber}`,
           );
         }
 
@@ -210,7 +210,7 @@ export class BaseEngine {
 
   async monitorMessageExecution(
     outgoingMessageAccount: Account<OutgoingMessage, string>,
-    options: { timeoutMs?: number; pollIntervalMs?: number } = {}
+    options: { timeoutMs?: number; pollIntervalMs?: number } = {},
   ) {
     const timeoutMs = options.timeoutMs ?? DEFAULT_MONITOR_TIMEOUT_MS;
     const pollIntervalMs =
@@ -243,11 +243,11 @@ export class BaseEngine {
       gasLimit?: bigint;
       timeoutMs?: number;
       pollIntervalMs?: number;
-    } = {}
+    } = {},
   ): Promise<Hash> {
     if (!this.walletClient || !this.config.base.privateKey) {
       throw new Error(
-        "Base wallet client not initialized (missing privateKey)"
+        "Base wallet client not initialized (missing privateKey)",
       );
     }
 
@@ -256,7 +256,7 @@ export class BaseEngine {
     // Compute inner message hash as Base contracts do
     const { outerHash, evmMessage } = this.buildEvmMessage(
       outgoingMessageAccount,
-      options.gasLimit
+      options.gasLimit,
     );
 
     // Batch all on-chain reads into a single multicall for performance
@@ -293,14 +293,14 @@ export class BaseEngine {
     // Check if message previously failed
     if (failuresResult) {
       throw new Error(
-        `Message previously failed execution on Base. Hash: ${outerHash}`
+        `Message previously failed execution on Base. Hash: ${outerHash}`,
       );
     }
 
     // Assert Bridge.getMessageHash(message) equals expected hash
     if (this.sanitizeHex(messageHashResult) !== this.sanitizeHex(outerHash)) {
       throw new Error(
-        `Hash mismatch: getMessageHash != expected. got=${messageHashResult}, expected=${outerHash}`
+        `Hash mismatch: getMessageHash != expected. got=${messageHashResult}, expected=${outerHash}`,
       );
     }
 
@@ -308,7 +308,7 @@ export class BaseEngine {
     await this.waitForApproval(
       outerHash,
       options.timeoutMs,
-      options.pollIntervalMs
+      options.pollIntervalMs,
     );
 
     // Execute the message on Base
@@ -327,7 +327,7 @@ export class BaseEngine {
   private async waitForApproval(
     messageHash: Hex,
     timeoutMs = DEFAULT_MONITOR_TIMEOUT_MS,
-    intervalMs = DEFAULT_MONITOR_POLL_INTERVAL_MS
+    intervalMs = DEFAULT_MONITOR_POLL_INTERVAL_MS,
   ) {
     const validatorAddress = await this.getValidatorAddress();
 
@@ -350,12 +350,12 @@ export class BaseEngine {
       await sleep(currentInterval);
       currentInterval = Math.min(
         Math.floor(currentInterval * 1.5),
-        maxInterval
+        maxInterval,
       );
     }
 
     throw new Error(
-      `Timed out waiting for BridgeValidator approval after ${timeoutMs}ms`
+      `Timed out waiting for BridgeValidator approval after ${timeoutMs}ms`,
     );
   }
 
@@ -363,7 +363,7 @@ export class BaseEngine {
     return ixs.map((ix) => ({
       programId: this.bytes32FromPubkey(ix.programId),
       serializedAccounts: ix.accounts.map((acc) =>
-        toHex(new Uint8Array(getIxAccountEncoder().encode(acc)))
+        toHex(new Uint8Array(getIxAccountEncoder().encode(acc))),
       ),
       data: toHex(new Uint8Array(ix.data)),
     }));
@@ -371,7 +371,7 @@ export class BaseEngine {
 
   buildEvmMessage(
     outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
-    gasLimit: bigint = DEFAULT_EVM_GAS_LIMIT
+    gasLimit: bigint = DEFAULT_EVM_GAS_LIMIT,
   ) {
     const nonce = BigInt(outgoing.data.nonce);
     const senderBytes32 = this.bytes32FromPubkey(outgoing.data.sender);
@@ -380,8 +380,8 @@ export class BaseEngine {
     const innerHash = keccak256(
       encodeAbiParameters(
         [{ type: "bytes32" }, { type: "uint8" }, { type: "bytes" }],
-        [senderBytes32, ty, data]
-      )
+        [senderBytes32, ty, data],
+      ),
     );
 
     const pubkey = getBase58Codec().encode(outgoing.address);
@@ -389,8 +389,8 @@ export class BaseEngine {
     const outerHash = keccak256(
       encodeAbiParameters(
         [{ type: "uint64" }, { type: "bytes32" }, { type: "bytes32" }],
-        [nonce, `0x${pubkey.toHex()}`, innerHash]
-      )
+        [nonce, `0x${pubkey.toHex()}`, innerHash],
+      ),
     );
 
     const evmMessage = {
@@ -413,7 +413,7 @@ export class BaseEngine {
   }
 
   private buildIncomingPayload(
-    outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>
+    outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
   ) {
     const msg = outgoing.data.message;
 
@@ -451,7 +451,7 @@ export class BaseEngine {
             ],
           },
         ],
-        [transferTuple]
+        [transferTuple],
       );
 
       if (transfer.call.__option === "None") {
@@ -483,7 +483,7 @@ export class BaseEngine {
             ],
           },
         ],
-        [transferTuple, callTuple]
+        [transferTuple, callTuple],
       );
 
       return { ty, data, transferTuple, callTuple };
@@ -514,7 +514,7 @@ export class BaseEngine {
           value: BigInt(call.value),
           data: toHex(new Uint8Array(call.data)),
         },
-      ]
+      ],
     );
   }
 

@@ -1,7 +1,11 @@
-import type { Address as SolAddress, Instruction } from "@solana/kit";
+import type { Instruction, Address as SolAddress } from "@solana/kit";
 import { AccountRole, address as solAddress } from "@solana/kit";
 import type { Hash, Hex } from "viem";
 import { decodeEventLog, toBytes } from "viem";
+import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
+import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
+import type { Ix } from "../../../clients/ts/src/bridge";
+import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import {
   BridgeAlreadyExecutedError,
   BridgeNotProvenError,
@@ -29,13 +33,9 @@ import type {
   StatusOptions,
 } from "../../types";
 import { isSolanaDestinationCall } from "../../utils";
-import type { Ix } from "../../../clients/ts/src/bridge";
-import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
-import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
-import type { EngineConfig } from "../engines/types";
-import { SolanaEngine } from "../engines/solana-engine";
 import { BaseEngine } from "../engines/base-engine";
-import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
+import { SolanaEngine } from "../engines/solana-engine";
+import type { EngineConfig } from "../engines/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gas estimation constants for Base -> SVM quotes
@@ -146,7 +146,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       sourceGas =
         req.action.kind === "call" ? DEFAULT_CALL_GAS : DEFAULT_TRANSFER_GAS;
       warnings.push(
-        `Source gas estimation failed: ${err instanceof Error ? err.message : String(err)}. Using conservative estimate.`
+        `Source gas estimation failed: ${err instanceof Error ? err.message : String(err)}. Using conservative estimate.`,
       );
     }
 
@@ -213,7 +213,9 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       }
       // Estimate gas for bridgeCall
       const instructionCount = req.action.call.call.instructions.length;
-      return BRIDGE_CALL_BASE_GAS + BigInt(instructionCount) * GAS_PER_INSTRUCTION;
+      return (
+        BRIDGE_CALL_BASE_GAS + BigInt(instructionCount) * GAS_PER_INSTRUCTION
+      );
     }
 
     if (req.action.kind === "transfer") {
@@ -227,7 +229,9 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
           });
         }
         const instructionCount = call.call.instructions.length;
-        return BRIDGE_TOKEN_BASE_GAS + BigInt(instructionCount) * GAS_PER_INSTRUCTION;
+        return (
+          BRIDGE_TOKEN_BASE_GAS + BigInt(instructionCount) * GAS_PER_INSTRUCTION
+        );
       }
       return BRIDGE_TOKEN_BASE_GAS;
     }
@@ -241,7 +245,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
    */
   private async estimateExecuteFee(
     req: QuoteRequest,
-    warnings: string[]
+    warnings: string[],
   ): Promise<bigint> {
     // Extract instructions from the request
     let instructions: SolanaInstruction[] = [];
@@ -273,21 +277,29 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       // Fee = base tx fee + compute budget fee
       // Note: This is a simplified model; actual fees depend on priority fee market
       const computeFee = (totalCU * LAMPORTS_PER_CU) / 1_000_000n; // microlamports to lamports
-      return SOLANA_BASE_TX_FEE + (computeFee > 0n ? computeFee : MIN_COMPUTE_FEE_LAMPORTS);
+      return (
+        SOLANA_BASE_TX_FEE +
+        (computeFee > 0n ? computeFee : MIN_COMPUTE_FEE_LAMPORTS)
+      );
     }
 
     // Simulation failed - fall back to heuristic
     warnings.push(
-      `Could not simulate instructions; using heuristic estimate for ${instructions.length} instruction(s)`
+      `Could not simulate instructions; using heuristic estimate for ${instructions.length} instruction(s)`,
     );
 
-    return SOLANA_BASE_TX_FEE + BigInt(instructions.length) * FALLBACK_LAMPORTS_PER_INSTRUCTION;
+    return (
+      SOLANA_BASE_TX_FEE +
+      BigInt(instructions.length) * FALLBACK_LAMPORTS_PER_INSTRUCTION
+    );
   }
 
   /**
    * Convert SDK SolanaInstruction[] to @solana/kit Instruction[] for simulation.
    */
-  private convertToInstruction(instructions: SolanaInstruction[]): Instruction[] {
+  private convertToInstruction(
+    instructions: SolanaInstruction[],
+  ): Instruction[] {
     return instructions.map((ix) => ({
       programAddress: solAddress(ix.programId),
       accounts: ix.accounts.map((acc) => ({
@@ -474,7 +486,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     if (!txHash) {
       throw new BridgeProofNotAvailableError(
         "Missing derived.txHash; cannot prove without the initiating EVM transaction hash.",
-        { route: ref.route, chain: ref.route.sourceChain }
+        { route: ref.route, chain: ref.route.sourceChain },
       );
     }
 
@@ -484,12 +496,12 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
     const { event, rawProof } = await this.baseEngine.generateProof(
       txHash,
-      blockNumber
+      blockNumber,
     );
     const res = await this.solanaEngine.handleProveMessage(
       event,
       rawProof,
-      blockNumber
+      blockNumber,
     );
 
     if (!res.signature) {
@@ -501,7 +513,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
   async execute(
     ref: MessageRef,
-    _opts?: ExecuteOptions
+    _opts?: ExecuteOptions,
   ): Promise<ExecuteResult> {
     const messageHash =
       ref.source.id.scheme === "evm:messageHash"
@@ -525,7 +537,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
           {
             route: ref.route,
             chain: ref.route.destinationChain,
-          }
+          },
         );
       }
       if (msg.includes("Ensure it has been proven")) {
@@ -540,7 +552,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
   async status(
     ref: MessageRef,
-    opts?: StatusOptions
+    opts?: StatusOptions,
   ): Promise<ExecutionStatus> {
     const at = Date.now();
     const messageHash =
@@ -552,7 +564,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const pda = await this.deriveIncomingMessagePda(messageHash);
 
     const rpc = (await import("@solana/kit")).createSolanaRpc(
-      this.solana.rpcUrl
+      this.solana.rpcUrl,
     );
     const { fetchMaybeIncomingMessage } = await import(
       "../../../clients/ts/src/bridge"
@@ -574,13 +586,13 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
   monitor(
     ref: MessageRef,
-    opts?: MonitorOptions
+    opts?: MonitorOptions,
   ): AsyncIterable<ExecutionStatus> {
     return pollingMonitor((signal) => this.status(ref, { signal }), opts);
   }
 
   private async deriveIncomingMessagePda(
-    messageHash: Hex
+    messageHash: Hex,
   ): Promise<SolAddress> {
     const { getProgramDerivedAddress } = await import("@solana/kit");
     const { getIdlConstant } = await import(
@@ -626,7 +638,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     if (events.length !== 1) {
       throw new BridgeProofNotAvailableError(
         `Expected exactly 1 MessageInitiated event in tx receipt; found ${events.length}`,
-        { route: this.route, chain: this.route.sourceChain }
+        { route: this.route, chain: this.route.sourceChain },
       );
     }
 

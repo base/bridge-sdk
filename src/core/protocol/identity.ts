@@ -1,4 +1,4 @@
-import { encodeAbiParameters, keccak256, type Hex } from "viem";
+import { encodeAbiParameters, type Hex, keccak256 } from "viem";
 import type { fetchOutgoingMessage } from "../../clients/ts/src/bridge";
 import {
   bytes32FromSolanaPubkey,
@@ -20,7 +20,7 @@ export interface EvmIncomingMessage {
  */
 export function buildEvmIncomingMessage(
   outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
-  args: { gasLimit: bigint }
+  args: { gasLimit: bigint },
 ): {
   innerHash: Hex;
   outerHash: Hex;
@@ -34,15 +34,15 @@ export function buildEvmIncomingMessage(
   const innerHash = keccak256(
     encodeAbiParameters(
       [{ type: "bytes32" }, { type: "uint8" }, { type: "bytes" }],
-      [sender, ty, data]
-    )
+      [sender, ty, data],
+    ),
   );
 
   const outerHash = keccak256(
     encodeAbiParameters(
       [{ type: "uint64" }, { type: "bytes32" }, { type: "bytes32" }],
-      [nonce, outgoingMessagePubkey, innerHash]
-    )
+      [nonce, outgoingMessagePubkey, innerHash],
+    ),
   );
 
   return {

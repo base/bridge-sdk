@@ -14,10 +14,10 @@ export const DEFAULT_BACKOFF: BackoffOptions = {
 
 export function backoffDelayMs(
   attempt: number,
-  opts: Partial<BackoffOptions> = {}
+  opts: Partial<BackoffOptions> = {},
 ): number {
   const o: BackoffOptions = { ...DEFAULT_BACKOFF, ...opts };
-  const base = Math.min(o.initialMs * Math.pow(o.factor, attempt), o.maxMs);
+  const base = Math.min(o.initialMs * o.factor ** attempt, o.maxMs);
   const jitter = base * o.jitterRatio;
   const randomized = base + (Math.random() * 2 - 1) * jitter;
   return Math.max(0, Math.floor(randomized));

@@ -3,7 +3,7 @@ import {
   getBase58Encoder,
   type Address as SolAddress,
 } from "@solana/kit";
-import { encodeAbiParameters, padHex, toHex, type Hex } from "viem";
+import { encodeAbiParameters, type Hex, padHex, toHex } from "viem";
 import type {
   BridgeSolanaToBaseStateOutgoingMessageMessage,
   Call,
@@ -24,7 +24,7 @@ export function bytes32FromSolanaPubkey(pubkey: SolAddress): Hex {
 }
 
 export function encodeOutgoingMessagePayload(
-  msg: BridgeSolanaToBaseStateOutgoingMessageMessage
+  msg: BridgeSolanaToBaseStateOutgoingMessageMessage,
 ): { ty: number; data: Hex } {
   // Call
   if (msg.__kind === "Call") {
@@ -60,7 +60,7 @@ export function encodeOutgoingMessagePayload(
           ],
         },
       ],
-      [transferTuple]
+      [transferTuple],
     );
 
     if (transfer.call.__option === "None") {
@@ -90,7 +90,7 @@ export function encodeOutgoingMessagePayload(
           ],
         },
       ],
-      [transferTuple, callTuple]
+      [transferTuple, callTuple],
     );
 
     return { ty: MESSAGE_TYPE.TransferAndCall, data };
@@ -123,7 +123,7 @@ export function encodeCallData(call: Call): Hex {
         value: BigInt(call.value),
         data: toHex(new Uint8Array(call.data)),
       },
-    ]
+    ],
   );
 }
 
@@ -138,7 +138,7 @@ export function callTupleObject(call: Call) {
 }
 
 export function outgoingMessagePubkeyBytes32(
-  outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>
+  outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
 ): Hex {
   const pubkeyBase58 = getBase58Codec().encode(outgoing.address);
   return `0x${pubkeyBase58.toHex()}` as Hex;

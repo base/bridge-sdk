@@ -41,7 +41,7 @@ function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
       (err) => {
         signal.removeEventListener("abort", onAbort);
         reject(err);
-      }
+      },
     );
   });
 }
@@ -79,7 +79,7 @@ function stableStatusKey(s: ExecutionStatus): string {
  */
 export async function* pollingMonitor(
   getStatus: (signal?: AbortSignal) => Promise<ExecutionStatus>,
-  opts: MonitorOptions = {}
+  opts: MonitorOptions = {},
 ): AsyncIterable<ExecutionStatus> {
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const pollIntervalMs = opts.pollIntervalMs ?? 5_000;
@@ -106,7 +106,7 @@ export async function* pollingMonitor(
     if (prev && !isAllowedTransition(prev.type, next.type)) {
       throw new BridgeInvariantViolationError(
         `Illegal status transition: ${prev.type} -> ${next.type}`,
-        { stage: "monitor" }
+        { stage: "monitor" },
       );
     }
 

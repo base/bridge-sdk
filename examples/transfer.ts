@@ -1,7 +1,7 @@
 import { createBridgeClient } from "../src";
-import { base, solanaMainnet } from "../src/chains";
-import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
 import { makeEvmAdapter } from "../src/adapters/chains/evm/adapter";
+import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
+import { base, solanaMainnet } from "../src/chains";
 import { loadSolanaKeypair } from "../src/node";
 
 // Example: Solana -> Base (EVM) transfer (native SOL)

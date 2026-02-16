@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { expect, test } from "bun:test";
 import { isAllowedTransition } from "../src/core/capabilities";
 
 test("execution status transitions: happy path is allowed", () => {

@@ -1,3 +1,8 @@
+import type { Address as SolAddress } from "@solana/kit";
+import type { Hex } from "viem";
+import type { EvmChainAdapter } from "../../adapters/chains/evm/types";
+import type { SolanaChainAdapter } from "../../adapters/chains/solana/types";
+import { BridgeUnsupportedRouteError } from "../errors";
 import type {
   BridgeRoute,
   ChainAdapter,
@@ -5,13 +10,8 @@ import type {
   RouteAdapter,
 } from "../types";
 import { isSolanaChainId } from "../utils";
-import { BridgeUnsupportedRouteError } from "../errors";
-import type { EvmChainAdapter } from "../../adapters/chains/evm/types";
-import type { SolanaChainAdapter } from "../../adapters/chains/solana/types";
 import { BaseToSvmRouteAdapter } from "./routes/base-to-svm";
 import { SvmToBaseRouteAdapter } from "./routes/svm-to-base";
-import type { Address as SolAddress } from "@solana/kit";
-import type { Hex } from "viem";
 
 /**
  * Hub chain identifiers for the bridge.
@@ -67,7 +67,7 @@ function isBaseEvmChainId(id: string): boolean {
 }
 
 function asSolanaAdapter(
-  adapter: ChainAdapter
+  adapter: ChainAdapter,
 ): SolanaChainAdapter | undefined {
   return (adapter as any)?.kind === "solana"
     ? (adapter as SolanaChainAdapter)
@@ -98,7 +98,7 @@ export function supportsBridgeRoute(route: BridgeRoute): boolean {
 export async function resolveBridgeRoute(
   route: BridgeRoute,
   chains: Record<ChainId, ChainAdapter>,
-  config: BridgeConfig
+  config: BridgeConfig,
 ): Promise<RouteAdapter> {
   const source = chains[route.sourceChain];
   const dest = chains[route.destinationChain];

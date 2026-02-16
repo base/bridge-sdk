@@ -1,4 +1,48 @@
 import {
+  type Account,
+  type AccountMeta,
+  AccountRole,
+  address,
+  addSignersToTransactionMessage,
+  appendTransactionMessageInstructions,
+  assertIsSendableTransaction,
+  assertIsTransactionWithBlockhashLifetime,
+  compileTransaction,
+  createSolanaRpc,
+  createSolanaRpcSubscriptions,
+  createTransactionMessage,
+  Endian,
+  getBase58Codec,
+  getBase58Encoder,
+  getBase64EncodedWireTransaction,
+  getProgramDerivedAddress,
+  getSignatureFromTransaction,
+  getU8Codec,
+  getU64Encoder,
+  type Instruction,
+  type KeyPairSigner,
+  pipe,
+  type Signature,
+  type Address as SolAddress,
+  sendAndConfirmTransactionFactory,
+  setTransactionMessageFeePayer,
+  setTransactionMessageLifetimeUsingBlockhash,
+  signTransactionMessageWithSigners,
+  type TransactionSigner,
+} from "@solana/kit";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
+  fetchMaybeMint,
+  fetchMaybeToken,
+  findAssociatedTokenPda,
+  type Mint,
+} from "@solana-program/token";
+import { type Address, type Hash, type Hex, keccak256, toBytes } from "viem";
+import {
+  fetchCfg,
+  getPayForRelayInstruction,
+} from "../../../clients/ts/src/base-relayer";
+import {
   CallType,
   fetchBridge,
   fetchMaybeIncomingMessage,
@@ -15,7 +59,18 @@ import {
   type OutgoingMessage,
   type WrapTokenInstructionDataArgs,
 } from "../../../clients/ts/src/bridge";
+import { getIdlConstant } from "../../../utils/bridge-idl.constants";
+import { getRelayerIdlConstant } from "../../../utils/relayer-idl.constants";
+import { sleep } from "../../../utils/time";
+import {
+  DEFAULT_MONITOR_POLL_INTERVAL_MS,
+  DEFAULT_MONITOR_TIMEOUT_MS,
+  DEFAULT_RELAY_GAS_LIMIT,
+  SYSTEM_PROGRAM_ADDRESS,
+  TOKEN_2022_PROGRAM_ADDRESS,
+} from "./constants";
 import type {
+  CallParams,
   EngineConfig,
   MessageCall,
   MessageTransfer,
@@ -24,61 +79,6 @@ import type {
   MessageTransferWrappedToken,
   Rpc,
 } from "./types";
-import { getIdlConstant } from "../../../utils/bridge-idl.constants";
-import {
-  addSignersToTransactionMessage,
-  appendTransactionMessageInstructions,
-  assertIsSendableTransaction,
-  assertIsTransactionWithBlockhashLifetime,
-  compileTransaction,
-  createSolanaRpc,
-  createSolanaRpcSubscriptions,
-  createTransactionMessage,
-  getBase64EncodedWireTransaction,
-  getProgramDerivedAddress,
-  getSignatureFromTransaction,
-  pipe,
-  sendAndConfirmTransactionFactory,
-  setTransactionMessageFeePayer,
-  setTransactionMessageLifetimeUsingBlockhash,
-  signTransactionMessageWithSigners,
-  type Instruction,
-  type KeyPairSigner,
-  type TransactionSigner,
-  type Address as SolAddress,
-  type Account,
-  address,
-  getBase58Encoder,
-  getU8Codec,
-  getU64Encoder,
-  Endian,
-  AccountRole,
-  type AccountMeta,
-  getBase58Codec,
-  type Signature,
-} from "@solana/kit";
-import { keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
-import {
-  fetchCfg,
-  getPayForRelayInstruction,
-} from "../../../clients/ts/src/base-relayer";
-import { getRelayerIdlConstant } from "../../../utils/relayer-idl.constants";
-import {
-  ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
-  fetchMaybeMint,
-  fetchMaybeToken,
-  findAssociatedTokenPda,
-  type Mint,
-} from "@solana-program/token";
-import {
-  SYSTEM_PROGRAM_ADDRESS,
-  TOKEN_2022_PROGRAM_ADDRESS,
-  DEFAULT_RELAY_GAS_LIMIT,
-  DEFAULT_MONITOR_POLL_INTERVAL_MS,
-  DEFAULT_MONITOR_TIMEOUT_MS,
-} from "./constants";
-import { sleep } from "../../../utils/time";
-import type { CallParams } from "./types";
 
 export interface SolanaEngineOpts {
   config: EngineConfig;
@@ -139,7 +139,7 @@ export class SolanaEngine {
 
   async getOutgoingMessage(
     pubkey: SolAddress,
-    options: { timeoutMs?: number; pollIntervalMs?: number } = {}
+    options: { timeoutMs?: number; pollIntervalMs?: number } = {},
   ): Promise<Account<OutgoingMessage, string>> {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
     const timeoutMs = options.timeoutMs ?? DEFAULT_MONITOR_TIMEOUT_MS;
@@ -219,7 +219,7 @@ export class SolanaEngine {
    * @returns The compute units consumed, or undefined if simulation fails
    */
   async simulateInstructions(
-    instructions: Instruction[]
+    instructions: Instruction[],
   ): Promise<bigint | undefined> {
     if (instructions.length === 0) {
       return 0n;
@@ -240,8 +240,9 @@ export class SolanaEngine {
     const txMessage = pipe(
       createTransactionMessage({ version: 0 }),
       (msg) => setTransactionMessageFeePayer(feePayer, msg),
-      (msg) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, msg),
-      (msg) => appendTransactionMessageInstructions(instructions, msg)
+      (msg) =>
+        setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, msg),
+      (msg) => appendTransactionMessageInstructions(instructions, msg),
     );
 
     // Compile to transaction (unsigned)
@@ -296,11 +297,11 @@ export class SolanaEngine {
               amount: opts.amount,
               call: this.formatCall(opts.call),
             },
-            { programAddress: this.config.solana.bridgeProgram }
+            { programAddress: this.config.solana.bridgeProgram },
           ),
         ];
       },
-      opts.idempotencyKey
+      opts.idempotencyKey,
     );
   }
 
@@ -344,11 +345,11 @@ export class SolanaEngine {
               amount,
               call: this.formatCall(opts.call),
             },
-            { programAddress: this.config.solana.bridgeProgram }
+            { programAddress: this.config.solana.bridgeProgram },
           ),
         ];
       },
-      opts.idempotencyKey
+      opts.idempotencyKey,
     );
   }
 
@@ -378,11 +379,11 @@ export class SolanaEngine {
               amount,
               call: this.formatCall(opts.call),
             },
-            { programAddress: this.config.solana.bridgeProgram }
+            { programAddress: this.config.solana.bridgeProgram },
           ),
         ];
       },
-      opts.idempotencyKey
+      opts.idempotencyKey,
     );
   }
 
@@ -413,11 +414,11 @@ export class SolanaEngine {
                 data: Buffer.from(callData, "hex"),
               },
             },
-            { programAddress: this.config.solana.bridgeProgram }
+            { programAddress: this.config.solana.bridgeProgram },
           ),
         ];
       },
-      opts.idempotencyKey
+      opts.idempotencyKey,
     );
   }
 
@@ -454,11 +455,11 @@ export class SolanaEngine {
             encodedSymbol,
             Buffer.from(instructionArgs.remoteToken),
             Buffer.from(getU8Codec().encode(instructionArgs.scalerExponent)),
-          ])
+          ]),
         );
 
         const decimalsSeed = Buffer.from(
-          getU8Codec().encode(instructionArgs.decimals)
+          getU8Codec().encode(instructionArgs.decimals),
         );
 
         const [mintAddress] = await getProgramDerivedAddress({
@@ -483,11 +484,11 @@ export class SolanaEngine {
 
               ...instructionArgs,
             },
-            { programAddress: this.config.solana.bridgeProgram }
+            { programAddress: this.config.solana.bridgeProgram },
           ),
         ];
       },
-      opts.idempotencyKey
+      opts.idempotencyKey,
     );
   }
 
@@ -514,7 +515,7 @@ export class SolanaEngine {
       };
     },
     rawProof: readonly `0x${string}`[],
-    blockNumber: bigint
+    blockNumber: bigint,
   ): Promise<{ signature?: Signature; messageHash: Hash }> {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
@@ -560,7 +561,7 @@ export class SolanaEngine {
         proof: rawProof.map((e: string) => toBytes(e)),
         messageHash: toBytes(event.messageHash),
       },
-      { programAddress: this.config.solana.bridgeProgram }
+      { programAddress: this.config.solana.bridgeProgram },
     );
 
     const signature = await this.buildAndSendTransaction([ix], payer);
@@ -582,11 +583,11 @@ export class SolanaEngine {
 
     const maybeIncomingMessage = await fetchMaybeIncomingMessage(
       rpc,
-      messagePda
+      messagePda,
     );
     if (!maybeIncomingMessage.exists) {
       throw new Error(
-        `Message not found at ${messagePda}. Ensure it has been proven on Solana first.`
+        `Message not found at ${messagePda}. Ensure it has been proven on Solana first.`,
       );
     }
     const incomingMessage = maybeIncomingMessage;
@@ -611,7 +612,7 @@ export class SolanaEngine {
         : await this.messageTransferAccounts(
             rpc,
             message,
-            this.config.solana.bridgeProgram
+            this.config.solana.bridgeProgram,
           );
 
     remainingAccounts = remainingAccounts.map((acct) => {
@@ -634,7 +635,7 @@ export class SolanaEngine {
 
     const relayMessageIx = getRelayMessageInstruction(
       { message: messagePda, bridge: bridgeAccountAddress },
-      { programAddress: this.config.solana.bridgeProgram }
+      { programAddress: this.config.solana.bridgeProgram },
     );
 
     const relayMessageIxWithRemainingAccounts: Instruction = {
@@ -645,7 +646,7 @@ export class SolanaEngine {
 
     const signature = await this.buildAndSendTransaction(
       [relayMessageIxWithRemainingAccounts],
-      payer
+      payer,
     );
     return signature;
   }
@@ -668,18 +669,18 @@ export class SolanaEngine {
   private async messageTransferAccounts(
     rpc: Rpc,
     message: MessageTransfer,
-    solanaBridge: SolAddress
+    solanaBridge: SolAddress,
   ) {
     const remainingAccounts: Array<AccountMeta> =
       message.transfer.__kind === "Sol"
         ? await this.messageTransferSolAccounts(message.transfer, solanaBridge)
         : message.transfer.__kind === "Spl"
-        ? await this.messageTransferSplAccounts(
-            rpc,
-            message.transfer,
-            solanaBridge
-          )
-        : await this.messageTransferWrappedTokenAccounts(message.transfer);
+          ? await this.messageTransferSplAccounts(
+              rpc,
+              message.transfer,
+              solanaBridge,
+            )
+          : await this.messageTransferWrappedTokenAccounts(message.transfer);
 
     const ixs = message.ixs;
 
@@ -688,7 +689,7 @@ export class SolanaEngine {
       ...ixs.map((i: Ix) => ({
         address: i.programId,
         role: AccountRole.READONLY,
-      }))
+      })),
     );
 
     return remainingAccounts;
@@ -696,7 +697,7 @@ export class SolanaEngine {
 
   private async messageTransferSolAccounts(
     message: MessageTransferSol,
-    solanaBridge: SolAddress
+    solanaBridge: SolAddress,
   ) {
     const { to } = message.fields[0];
 
@@ -715,7 +716,7 @@ export class SolanaEngine {
   private async messageTransferSplAccounts(
     rpc: Rpc,
     message: MessageTransferSpl,
-    solanaBridge: SolAddress
+    solanaBridge: SolAddress,
   ) {
     const { remoteToken, localToken, to } = message.fields[0];
 
@@ -742,7 +743,7 @@ export class SolanaEngine {
   }
 
   private async messageTransferWrappedTokenAccounts(
-    message: MessageTransferWrappedToken
+    message: MessageTransferWrappedToken,
   ) {
     const { localToken, to } = message.fields[0];
 
@@ -766,10 +767,10 @@ export class SolanaEngine {
                 ? AccountRole.WRITABLE_SIGNER
                 : AccountRole.WRITABLE
               : acc.isSigner
-              ? AccountRole.READONLY_SIGNER
-              : AccountRole.READONLY,
+                ? AccountRole.READONLY_SIGNER
+                : AccountRole.READONLY,
           };
-        })
+        }),
       );
 
       allIxsAccounts.push(...ixAccounts);
@@ -802,18 +803,17 @@ export class SolanaEngine {
       outgoingMessage: SolAddress;
       salt: Uint8Array;
     }) => Promise<Instruction[]>,
-    idempotencyKey?: string
+    idempotencyKey?: string,
   ): Promise<SolAddress> {
-    const { payer, bridge, outgoingMessage, salt } = await this.setupMessage(
-      idempotencyKey
-    );
+    const { payer, bridge, outgoingMessage, salt } =
+      await this.setupMessage(idempotencyKey);
     const ixs = await builder({ payer, bridge, outgoingMessage, salt });
     return await this.submitMessage(
       ixs,
       outgoingMessage,
       payer,
       !!payForRelay,
-      gasLimit
+      gasLimit,
     );
   }
 
@@ -828,15 +828,14 @@ export class SolanaEngine {
 
     const bridge = await fetchBridge(rpc, bridgeAccountAddress);
 
-    const { salt, pubkey: outgoingMessage } = await this.outgoingMessagePubkey(
-      idempotencyKey
-    );
+    const { salt, pubkey: outgoingMessage } =
+      await this.outgoingMessagePubkey(idempotencyKey);
     return { payer, bridge, outgoingMessage, salt };
   }
 
   private async setupSpl(
     opts: { mint: string; amount: bigint },
-    payer: KeyPairSigner
+    payer: KeyPairSigner,
   ) {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
@@ -851,7 +850,7 @@ export class SolanaEngine {
     const fromTokenAccount = await this.resolveFromTokenAccount(
       "payer",
       payer.address,
-      maybeMint
+      maybeMint,
     );
     const tokenProgram = maybeMint.programAddress;
 
@@ -863,11 +862,15 @@ export class SolanaEngine {
     outgoingMessage: SolAddress,
     payer: KeyPairSigner,
     payForRelay: boolean,
-    gasLimit?: bigint
+    gasLimit?: bigint,
   ): Promise<SolAddress> {
     if (payForRelay) {
       ixs.push(
-        await this.buildPayForRelayInstruction(outgoingMessage, payer, gasLimit)
+        await this.buildPayForRelayInstruction(
+          outgoingMessage,
+          payer,
+          gasLimit,
+        ),
       );
     }
 
@@ -903,7 +906,7 @@ export class SolanaEngine {
 
   private async buildAndSendTransaction(
     instructions: Instruction[],
-    payer: TransactionSigner
+    payer: TransactionSigner,
   ) {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
@@ -923,12 +926,11 @@ export class SolanaEngine {
       (tx) => setTransactionMessageFeePayer(payer.address, tx),
       (tx) => setTransactionMessageLifetimeUsingBlockhash(blockhash.value, tx),
       (tx) => appendTransactionMessageInstructions(instructions, tx),
-      (tx) => addSignersToTransactionMessage([payer], tx)
+      (tx) => addSignersToTransactionMessage([payer], tx),
     );
 
-    const signedTransaction = await signTransactionMessageWithSigners(
-      transactionMessage
-    );
+    const signedTransaction =
+      await signTransactionMessageWithSigners(transactionMessage);
     const signature = getSignatureFromTransaction(signedTransaction);
 
     assertIsSendableTransaction(signedTransaction);
@@ -944,7 +946,7 @@ export class SolanaEngine {
   private async buildPayForRelayInstruction(
     outgoingMessage: SolAddress,
     payer: KeyPairSigner<string>,
-    gasLimit?: bigint
+    gasLimit?: bigint,
   ) {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
@@ -956,7 +958,7 @@ export class SolanaEngine {
     const cfg = await fetchCfg(rpc, cfgAddress);
 
     const { salt, pubkey: messageToRelay } = await this.mtrPubkey(
-      this.config.solana.relayerProgram
+      this.config.solana.relayerProgram,
     );
 
     return getPayForRelayInstruction(
@@ -971,7 +973,7 @@ export class SolanaEngine {
         outgoingMessage: outgoingMessage,
         gasLimit: gasLimit ?? DEFAULT_RELAY_GAS_LIMIT,
       },
-      { programAddress: this.config.solana.relayerProgram }
+      { programAddress: this.config.solana.relayerProgram },
     );
   }
 
@@ -989,7 +991,7 @@ export class SolanaEngine {
   private async resolveFromTokenAccount(
     from: string,
     payerAddress: SolAddress,
-    mint: Account<Mint>
+    mint: Account<Mint>,
   ) {
     const rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
@@ -1009,7 +1011,7 @@ export class SolanaEngine {
         tokenProgram: mint.programAddress,
         mint: mint.address,
       },
-      { programAddress: ASSOCIATED_TOKEN_PROGRAM_ADDRESS }
+      { programAddress: ASSOCIATED_TOKEN_PROGRAM_ADDRESS },
     );
 
     const maybeAta = await fetchMaybeToken(rpc, ataAddress);

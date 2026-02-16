@@ -1,9 +1,9 @@
-import { test, expect } from "bun:test";
+import { expect, test } from "bun:test";
 import { pollingMonitor } from "../src/core/monitor/polling";
 import type { ExecutionStatus } from "../src/core/types";
 
 async function collect(
-  iter: AsyncIterable<ExecutionStatus>
+  iter: AsyncIterable<ExecutionStatus>,
 ): Promise<ExecutionStatus[]> {
   const results: ExecutionStatus[] = [];
   for await (const s of iter) {
@@ -20,7 +20,7 @@ test("pollingMonitor: abort before iteration throws immediately", async () => {
     Promise.resolve({ type: "Unknown", at: Date.now() } as ExecutionStatus);
 
   await expect(
-    collect(pollingMonitor(getStatus, { signal: ac.signal }))
+    collect(pollingMonitor(getStatus, { signal: ac.signal })),
   ).rejects.toThrow();
 });
 
@@ -65,7 +65,7 @@ test("pollingMonitor: abort reason is propagated", async () => {
     Promise.resolve({ type: "Unknown", at: Date.now() } as ExecutionStatus);
 
   await expect(
-    collect(pollingMonitor(getStatus, { signal: ac.signal }))
+    collect(pollingMonitor(getStatus, { signal: ac.signal })),
   ).rejects.toThrow("custom cancellation");
 });
 
@@ -86,7 +86,7 @@ test("pollingMonitor: works normally without signal", async () => {
   };
 
   const results = await collect(
-    pollingMonitor(getStatus, { pollIntervalMs: 1 })
+    pollingMonitor(getStatus, { pollIntervalMs: 1 }),
   );
 
   expect(results.map((r) => r.type)).toEqual([
@@ -112,7 +112,9 @@ test("pollingMonitor: abort during slow getStatus rejects promptly", async () =>
   setTimeout(() => ac.abort(), 50);
 
   await expect(
-    collect(pollingMonitor(getStatus, { signal: ac.signal, pollIntervalMs: 1 }))
+    collect(
+      pollingMonitor(getStatus, { signal: ac.signal, pollIntervalMs: 1 }),
+    ),
   ).rejects.toThrow();
 
   const elapsed = Date.now() - start;
@@ -131,8 +133,8 @@ test("pollingMonitor: timeout fires with signal present", async () => {
         signal: ac.signal,
         timeoutMs: 100,
         pollIntervalMs: 10,
-      })
-    )
+      }),
+    ),
   ).rejects.toThrow("monitor timed out");
 });
 
@@ -152,7 +154,7 @@ test("pollingMonitor: signal present but never aborted runs to completion", asyn
   };
 
   const results = await collect(
-    pollingMonitor(getStatus, { signal: ac.signal, pollIntervalMs: 1 })
+    pollingMonitor(getStatus, { signal: ac.signal, pollIntervalMs: 1 }),
   );
 
   expect(results.map((r) => r.type)).toEqual([
@@ -219,7 +221,7 @@ test("pollingMonitor: sleep cleanup — abort after completion causes no unhandl
   };
 
   const results = await collect(
-    pollingMonitor(getStatus, { signal: ac.signal, pollIntervalMs: 1 })
+    pollingMonitor(getStatus, { signal: ac.signal, pollIntervalMs: 1 }),
   );
 
   expect(results.map((r) => r.type)).toEqual([
@@ -246,7 +248,7 @@ test("pollingMonitor: getStatus receives the signal argument", async () => {
   };
 
   await collect(
-    pollingMonitor(getStatus, { signal: ac.signal, pollIntervalMs: 1 })
+    pollingMonitor(getStatus, { signal: ac.signal, pollIntervalMs: 1 }),
   );
 
   expect(receivedSignal).toBe(ac.signal);

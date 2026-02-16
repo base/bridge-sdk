@@ -1,13 +1,13 @@
 import {
-  createSolanaRpc,
   type Account,
+  createSolanaRpc,
   type Address as SolAddress,
 } from "@solana/kit";
-import type { ChainRef } from "../../../core/types";
 import {
   fetchOutgoingMessage,
   type OutgoingMessage,
 } from "../../../clients/ts/src/bridge";
+import type { ChainRef } from "../../../core/types";
 import type { SolanaAdapterConfig, SolanaChainAdapter } from "./types";
 
 /**
@@ -26,7 +26,7 @@ import type { SolanaAdapterConfig, SolanaChainAdapter } from "./types";
  * });
  */
 export function makeSolanaAdapter(
-  config: SolanaAdapterConfig
+  config: SolanaAdapterConfig,
 ): SolanaChainAdapter {
   const payer = config.payer.signer;
   const chain: ChainRef = config.chain ?? { id: "solana:mainnet" };
@@ -41,7 +41,7 @@ export function makeSolanaAdapter(
       await rpc.getLatestBlockhash().send();
     },
     async fetchOutgoingMessage(
-      address: SolAddress
+      address: SolAddress,
     ): Promise<Account<OutgoingMessage, string>> {
       return await fetchOutgoingMessage(rpc, address);
     },

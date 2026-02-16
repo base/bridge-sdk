@@ -1,6 +1,6 @@
 import { createBridgeClient } from "../src";
-import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
 import { makeEvmAdapter } from "../src/adapters/chains/evm/adapter";
+import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
 import { BASE_MAINNET_CHAIN_ID } from "../src/core/protocol/router";
 import { loadSolanaKeypair } from "../src/node";
 
@@ -33,7 +33,10 @@ async function main() {
   });
 
   const op = await client.transfer({
-    route: { sourceChain: BASE_MAINNET_CHAIN_ID, destinationChain: "solana:mainnet" },
+    route: {
+      sourceChain: BASE_MAINNET_CHAIN_ID,
+      destinationChain: "solana:mainnet",
+    },
     asset: {
       kind: "token",
       address: "0x0000000000000000000000000000000000000000",

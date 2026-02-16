@@ -1,11 +1,11 @@
-import { test, expect, describe } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import { BASE_MAINNET_CHAIN_ID } from "../src/core/protocol/router";
 import type {
+  BridgeRoute,
+  FeeEstimate,
   Quote,
   QuoteRequest,
-  FeeEstimate,
-  BridgeRoute,
 } from "../src/core/types";
-import { BASE_MAINNET_CHAIN_ID } from "../src/core/protocol/router";
 
 describe("Quote types", () => {
   test("FeeEstimate supports optional note field", () => {
@@ -184,14 +184,10 @@ describe("Quote validation logic", () => {
     const warnings: string[] = [];
 
     if (gasLimit < minGasLimit) {
-      warnings.push(
-        `Gas limit ${gasLimit} is below minimum ${minGasLimit}`
-      );
+      warnings.push(`Gas limit ${gasLimit} is below minimum ${minGasLimit}`);
     }
     if (gasLimit > maxGasLimit) {
-      warnings.push(
-        `Gas limit ${gasLimit} exceeds maximum ${maxGasLimit}`
-      );
+      warnings.push(`Gas limit ${gasLimit} exceeds maximum ${maxGasLimit}`);
     }
 
     expect(warnings).toHaveLength(1);
@@ -205,14 +201,10 @@ describe("Quote validation logic", () => {
     const warnings: string[] = [];
 
     if (gasLimit < minGasLimit) {
-      warnings.push(
-        `Gas limit ${gasLimit} is below minimum ${minGasLimit}`
-      );
+      warnings.push(`Gas limit ${gasLimit} is below minimum ${minGasLimit}`);
     }
     if (gasLimit > maxGasLimit) {
-      warnings.push(
-        `Gas limit ${gasLimit} exceeds maximum ${maxGasLimit}`
-      );
+      warnings.push(`Gas limit ${gasLimit} exceeds maximum ${maxGasLimit}`);
     }
 
     expect(warnings).toHaveLength(1);

@@ -358,7 +358,7 @@ export interface RouteAdapter {
   status(ref: MessageRef, opts?: StatusOptions): Promise<ExecutionStatus>;
   monitor(
     ref: MessageRef,
-    opts?: MonitorOptions
+    opts?: MonitorOptions,
   ): AsyncIterable<ExecutionStatus>;
 }
 

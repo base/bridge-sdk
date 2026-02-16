@@ -22,7 +22,7 @@ export function isTerminalStatus(s: ExecutionStatus): boolean {
 
 export function isAllowedTransition(
   from: ExecutionStatus["type"],
-  to: ExecutionStatus["type"]
+  to: ExecutionStatus["type"],
 ): boolean {
   if (from === to) return true;
   if (to === "Failed" || to === "Expired") return true;

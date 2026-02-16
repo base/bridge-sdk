@@ -1,15 +1,15 @@
-import type { ChainRef } from "../../../core/types";
 import {
+  type Chain,
   createPublicClient,
   createWalletClient,
-  http,
-  type Chain,
   type Hash,
   type Hex,
+  http,
   type PublicClient,
   type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import type { ChainRef } from "../../../core/types";
 import type { EvmAdapterConfig, EvmChainAdapter } from "./types";
 
 function makeViemChain(chainId: number): Chain {
@@ -23,7 +23,7 @@ function makeViemChain(chainId: number): Chain {
 }
 
 function hasViemChain(
-  config: EvmAdapterConfig
+  config: EvmAdapterConfig,
 ): config is Extract<EvmAdapterConfig, { chain: unknown }> {
   return (config as any).chain != null;
 }
@@ -36,7 +36,7 @@ export function makeEvmAdapter(config: EvmAdapterConfig): EvmChainAdapter {
     : config.chainId;
   const chain: ChainRef = { id: `eip155:${chainId}` };
   const viemChain = hasViemChain(config)
-    ? (config.chain as any).viem ?? config.chain
+    ? ((config.chain as any).viem ?? config.chain)
     : makeViemChain(chainId);
 
   const publicClient = createPublicClient({

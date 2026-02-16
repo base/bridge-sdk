@@ -1,10 +1,10 @@
+import type { Address, createSolanaRpc, KeyPairSigner } from "@solana/kit";
+import type { Chain, Address as EvmAddress, Hex } from "viem";
 import type {
   BridgeBaseToSolanaStateIncomingMessageMessage,
   BridgeBaseToSolanaStateIncomingMessageTransfer,
   CallType,
 } from "../../../clients/ts/src/bridge";
-import type { Address, createSolanaRpc, KeyPairSigner } from "@solana/kit";
-import type { Chain, Address as EvmAddress, Hex } from "viem";
 
 export interface BaseConfig {
   rpcUrl: string;

@@ -101,8 +101,8 @@ export class BridgeUnsupportedStepError extends BridgeError {
         args.step === "prove"
           ? "prove"
           : args.step === "execute"
-          ? "execute"
-          : "monitor",
+            ? "execute"
+            : "monitor",
       route: args.route,
       cause: args.cause,
     });
@@ -137,7 +137,7 @@ export class BridgeConfigError extends BridgeError {
       route?: BridgeRoute;
       chain?: ChainId;
       cause?: unknown;
-    }
+    },
   ) {
     super({
       message,
@@ -160,7 +160,7 @@ export class BridgeRpcError extends BridgeError {
       route?: BridgeRoute;
       chain?: ChainId;
       cause?: unknown;
-    }
+    },
   ) {
     super({
       message,
@@ -183,7 +183,7 @@ export class BridgeTimeoutError extends BridgeError {
       route?: BridgeRoute;
       chain?: ChainId;
       cause?: unknown;
-    }
+    },
   ) {
     super({
       message,
@@ -206,7 +206,7 @@ export class BridgeNotFinalError extends BridgeError {
       route?: BridgeRoute;
       chain?: ChainId;
       cause?: unknown;
-    }
+    },
   ) {
     super({
       message,
@@ -224,7 +224,7 @@ export class BridgeNotFinalError extends BridgeError {
 export class BridgeProofNotAvailableError extends BridgeError {
   constructor(
     message: string,
-    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown }
+    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown },
   ) {
     super({
       message,
@@ -242,7 +242,7 @@ export class BridgeProofNotAvailableError extends BridgeError {
 export class BridgeAlreadyProvenError extends BridgeError {
   constructor(
     message: string,
-    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown }
+    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown },
   ) {
     super({
       message,
@@ -260,7 +260,7 @@ export class BridgeAlreadyProvenError extends BridgeError {
 export class BridgeNotProvenError extends BridgeError {
   constructor(
     message: string,
-    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown }
+    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown },
   ) {
     super({
       message,
@@ -278,7 +278,7 @@ export class BridgeNotProvenError extends BridgeError {
 export class BridgeAlreadyExecutedError extends BridgeError {
   constructor(
     message: string,
-    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown }
+    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown },
   ) {
     super({
       message,
@@ -296,7 +296,7 @@ export class BridgeAlreadyExecutedError extends BridgeError {
 export class BridgeExecutionRevertedError extends BridgeError {
   constructor(
     message: string,
-    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown }
+    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown },
   ) {
     super({
       message,
@@ -314,7 +314,7 @@ export class BridgeExecutionRevertedError extends BridgeError {
 export class BridgeMessageFailedError extends BridgeError {
   constructor(
     message: string,
-    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown }
+    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown },
   ) {
     super({
       message,
@@ -337,7 +337,7 @@ export class BridgeInvariantViolationError extends BridgeError {
       route?: BridgeRoute;
       chain?: ChainId;
       cause?: unknown;
-    }
+    },
   ) {
     super({
       message,

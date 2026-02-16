@@ -1,4 +1,4 @@
-import { type Address } from "@solana/kit";
+import type { Address } from "@solana/kit";
 import { IDL } from "../interfaces/idls/base-relayer.idl";
 
 type BaseRelayerConstants = typeof IDL.constants;
@@ -6,46 +6,50 @@ type BaseRelayerConstantNames = BaseRelayerConstants[number]["name"];
 
 type BaseRelayerConstant<
   T extends BaseRelayerConstants,
-  Name extends BaseRelayerConstantNames
+  Name extends BaseRelayerConstantNames,
 > = Extract<T[number], { name: Name }>;
 
 type BaseRelayerConstantField<
   T extends BaseRelayerConstants,
   Name extends BaseRelayerConstantNames,
-  Field extends keyof BaseRelayerConstant<T, Name> = "value"
+  Field extends keyof BaseRelayerConstant<T, Name> = "value",
 > = BaseRelayerConstant<T, Name>[Field];
 
 type ParsedConstantValue<Name extends BaseRelayerConstantNames> =
   BaseRelayerConstantField<BaseRelayerConstants, Name, "type"> extends "pubkey"
     ? Address
     : BaseRelayerConstantField<BaseRelayerConstants, Name, "type"> extends
-        | "u128"
-        | "u64"
-    ? bigint
-    : BaseRelayerConstantField<BaseRelayerConstants, Name, "type"> extends
-        | "u16"
-        | "u8"
-    ? number
-    : BaseRelayerConstantField<
-        BaseRelayerConstants,
-        Name,
-        "type"
-      > extends "bytes"
-    ? number[]
-    : BaseRelayerConstantField<BaseRelayerConstants, Name, "type"> extends {
-        array: any;
-      }
-    ? number[]
-    : BaseRelayerConstantField<
-        BaseRelayerConstants,
-        Name,
-        "type"
-      > extends "string"
-    ? string
-    : never;
+          | "u128"
+          | "u64"
+      ? bigint
+      : BaseRelayerConstantField<BaseRelayerConstants, Name, "type"> extends
+            | "u16"
+            | "u8"
+        ? number
+        : BaseRelayerConstantField<
+              BaseRelayerConstants,
+              Name,
+              "type"
+            > extends "bytes"
+          ? number[]
+          : BaseRelayerConstantField<
+                BaseRelayerConstants,
+                Name,
+                "type"
+              > extends {
+                array: any;
+              }
+            ? number[]
+            : BaseRelayerConstantField<
+                  BaseRelayerConstants,
+                  Name,
+                  "type"
+                > extends "string"
+              ? string
+              : never;
 
 export const getRelayerIdlConstant = <T extends BaseRelayerConstantNames>(
-  name: T
+  name: T,
 ): ParsedConstantValue<T> => {
   const constant = IDL.constants.find((c) => c.name === name);
   if (!constant) {
@@ -67,8 +71,9 @@ export const getRelayerIdlConstant = <T extends BaseRelayerConstantNames>(
     case "u128":
       return Number(value) as unknown as ParsedConstantValue<T>;
 
-    default:
+    default: {
       const t: never = type;
       return t as unknown as ParsedConstantValue<T>;
+    }
   }
 };

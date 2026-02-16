@@ -1,5 +1,5 @@
-import type { ChainAdapter, ChainRef } from "../../../core/types";
 import type { Chain, Hash, Hex, PublicClient, WalletClient } from "viem";
+import type { ChainAdapter, ChainRef } from "../../../core/types";
 
 export type EvmWalletConfig =
   | { type: "privateKey"; key: Hex }
@@ -48,6 +48,6 @@ export interface EvmChainAdapter extends ChainAdapter {
 
   /** Convenience reads */
   getTransactionReceipt(
-    hash: Hash
+    hash: Hash,
   ): Promise<Awaited<ReturnType<PublicClient["getTransactionReceipt"]>>>;
 }
