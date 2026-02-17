@@ -1,10 +1,10 @@
-import { describe, expect, test, mock, beforeEach } from "bun:test";
-import type { BridgeRequest, BridgeRoute } from "../src/core/types";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { SvmToBaseRouteAdapter } from "../src/core/protocol/routes/svm-to-base";
+import type { BridgeRequest, BridgeRoute } from "../src/core/types";
 
 const FAKE_PDA = "11111111111111111111111111111112" as const;
 const FAKE_SIGNATURE =
-  "5wHu1qwD7dZ8x1J9Z9Lf2qQzK5dN1j7Z9fZ8x1J9Z9Lf2qQzK5dN1j7Z9fZ8x1J9Z9Lf2qQzK5dN1j" as const;
+  "5wHu1qwD7dZ8x1J9Z9Lf2qQzK5dN1j7Z9fZ8x1J9Z9Lf2qQzK5dN1j7Z9fZ8x1J9Z9Lf2qQzK5dN1j7Z9fZ8x1" as const;
 const FAKE_OUTER_HASH = "0xabc123" as const;
 
 const route: BridgeRoute = {

@@ -80,7 +80,7 @@ import type {
   Rpc,
 } from "./types";
 
-export interface BridgeOpResult {
+interface BridgeOpResult {
   outgoingPda: SolAddress;
   signature: Signature;
 }
