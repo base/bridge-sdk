@@ -226,7 +226,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     if (req.action.kind === "call") {
       const evmCall = this.extractEvmCall(req.action.call);
 
-      const outgoingPda = await this.solanaEngine.bridgeCall({
+      const { outgoingPda, signature } = await this.solanaEngine.bridgeCall({
         to: evmCall.to,
         value: evmCall.value,
         data: evmCall.data,
@@ -251,7 +251,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
         derived: { gasLimit: gasLimit.toString() },
       };
 
-      return { route: req.route, request: req, messageRef };
+      return { route: req.route, request: req, messageRef, initiationTx: signature };
     }
 
     if (req.action.kind === "transfer") {
@@ -259,7 +259,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       const evmCall = this.extractOptionalEvmCall(req.action.call);
 
       if (req.action.asset.kind === "native") {
-        const outgoingPda = await this.solanaEngine.bridgeSol({
+        const { outgoingPda, signature } = await this.solanaEngine.bridgeSol({
           to: req.action.recipient as `0x${string}`,
           amount: req.action.amount,
           payForRelay,
@@ -293,7 +293,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           derived: { gasLimit: gasLimit.toString() },
         };
 
-        return { route: req.route, request: req, messageRef };
+        return { route: req.route, request: req, messageRef, initiationTx: signature };
       }
 
       if (req.action.asset.kind === "token") {
@@ -306,7 +306,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           });
         }
 
-        const outgoingPda = await this.solanaEngine.bridgeSpl({
+        const { outgoingPda, signature } = await this.solanaEngine.bridgeSpl({
           to: req.action.recipient as `0x${string}`,
           mint,
           remoteToken,
@@ -342,11 +342,11 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           derived: { gasLimit: gasLimit.toString() },
         };
 
-        return { route: req.route, request: req, messageRef };
+        return { route: req.route, request: req, messageRef, initiationTx: signature };
       }
 
       if (req.action.asset.kind === "wrapped") {
-        const outgoingPda = await this.solanaEngine.bridgeWrapped({
+        const { outgoingPda, signature } = await this.solanaEngine.bridgeWrapped({
           to: req.action.recipient as `0x${string}`,
           mint: req.action.asset.address,
           amount: req.action.amount,
@@ -381,7 +381,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           derived: { gasLimit: gasLimit.toString() },
         };
 
-        return { route: req.route, request: req, messageRef };
+        return { route: req.route, request: req, messageRef, initiationTx: signature };
       }
     }
 

@@ -80,6 +80,11 @@ import type {
   Rpc,
 } from "./types";
 
+export interface BridgeOpResult {
+  outgoingPda: SolAddress;
+  signature: Signature;
+}
+
 export interface SolanaEngineOpts {
   config: EngineConfig;
 }
@@ -274,7 +279,7 @@ export class SolanaEngine {
     }
   }
 
-  async bridgeSol(opts: BridgeSolOpts): Promise<SolAddress> {
+  async bridgeSol(opts: BridgeSolOpts): Promise<BridgeOpResult> {
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -305,7 +310,7 @@ export class SolanaEngine {
     );
   }
 
-  async bridgeSpl(opts: BridgeSplOpts): Promise<SolAddress> {
+  async bridgeSpl(opts: BridgeSplOpts): Promise<BridgeOpResult> {
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -353,7 +358,7 @@ export class SolanaEngine {
     );
   }
 
-  async bridgeWrapped(opts: BridgeWrappedOpts): Promise<SolAddress> {
+  async bridgeWrapped(opts: BridgeWrappedOpts): Promise<BridgeOpResult> {
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -387,7 +392,7 @@ export class SolanaEngine {
     );
   }
 
-  async bridgeCall(opts: BridgeCallOpts): Promise<SolAddress> {
+  async bridgeCall(opts: BridgeCallOpts): Promise<BridgeOpResult> {
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -422,7 +427,7 @@ export class SolanaEngine {
     );
   }
 
-  async wrapToken(opts: WrapTokenOpts): Promise<SolAddress> {
+  async wrapToken(opts: WrapTokenOpts): Promise<BridgeOpResult> {
     return await this.executeBridgeOp(
       opts.payForRelay,
       undefined,
@@ -804,7 +809,7 @@ export class SolanaEngine {
       salt: Uint8Array;
     }) => Promise<Instruction[]>,
     idempotencyKey?: string,
-  ): Promise<SolAddress> {
+  ): Promise<BridgeOpResult> {
     const { payer, bridge, outgoingMessage, salt } =
       await this.setupMessage(idempotencyKey);
     const ixs = await builder({ payer, bridge, outgoingMessage, salt });
@@ -863,7 +868,7 @@ export class SolanaEngine {
     payer: KeyPairSigner,
     payForRelay: boolean,
     gasLimit?: bigint,
-  ): Promise<SolAddress> {
+  ): Promise<BridgeOpResult> {
     if (payForRelay) {
       ixs.push(
         await this.buildPayForRelayInstruction(
@@ -874,8 +879,8 @@ export class SolanaEngine {
       );
     }
 
-    await this.buildAndSendTransaction(ixs, payer);
-    return outgoingMessage;
+    const signature = await this.buildAndSendTransaction(ixs, payer);
+    return { outgoingPda: outgoingMessage, signature };
   }
 
   private async solVaultPubkey() {
