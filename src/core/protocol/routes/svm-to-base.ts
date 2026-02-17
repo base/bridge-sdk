@@ -251,7 +251,12 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
         derived: { gasLimit: gasLimit.toString() },
       };
 
-      return { route: req.route, request: req, messageRef, initiationTx: signature };
+      return {
+        route: req.route,
+        request: req,
+        messageRef,
+        initiationTx: signature,
+      };
     }
 
     if (req.action.kind === "transfer") {
@@ -293,7 +298,12 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           derived: { gasLimit: gasLimit.toString() },
         };
 
-        return { route: req.route, request: req, messageRef, initiationTx: signature };
+        return {
+          route: req.route,
+          request: req,
+          messageRef,
+          initiationTx: signature,
+        };
       }
 
       if (req.action.asset.kind === "token") {
@@ -342,26 +352,32 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           derived: { gasLimit: gasLimit.toString() },
         };
 
-        return { route: req.route, request: req, messageRef, initiationTx: signature };
+        return {
+          route: req.route,
+          request: req,
+          messageRef,
+          initiationTx: signature,
+        };
       }
 
       if (req.action.asset.kind === "wrapped") {
-        const { outgoingPda, signature } = await this.solanaEngine.bridgeWrapped({
-          to: req.action.recipient as `0x${string}`,
-          mint: req.action.asset.address,
-          amount: req.action.amount,
-          payForRelay,
-          call: evmCall
-            ? {
-                to: evmCall.to,
-                value: evmCall.value,
-                data: evmCall.data,
-                ty: evmCall.ty,
-              }
-            : undefined,
-          gasLimit,
-          idempotencyKey: req.idempotencyKey,
-        });
+        const { outgoingPda, signature } =
+          await this.solanaEngine.bridgeWrapped({
+            to: req.action.recipient as `0x${string}`,
+            mint: req.action.asset.address,
+            amount: req.action.amount,
+            payForRelay,
+            call: evmCall
+              ? {
+                  to: evmCall.to,
+                  value: evmCall.value,
+                  data: evmCall.data,
+                  ty: evmCall.ty,
+                }
+              : undefined,
+            gasLimit,
+            idempotencyKey: req.idempotencyKey,
+          });
 
         const destinationHash = await this.deriveOuterHash(
           outgoingPda,
@@ -381,7 +397,12 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           derived: { gasLimit: gasLimit.toString() },
         };
 
-        return { route: req.route, request: req, messageRef, initiationTx: signature };
+        return {
+          route: req.route,
+          request: req,
+          messageRef,
+          initiationTx: signature,
+        };
       }
     }
 
@@ -443,7 +464,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
 
   async status(
     ref: MessageRef,
-    opts?: StatusOptions,
+    _opts?: StatusOptions,
   ): Promise<ExecutionStatus> {
     const at = Date.now();
 

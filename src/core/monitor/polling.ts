@@ -10,7 +10,7 @@ function sleep(ms: number, signal?: AbortSignal) {
     }
     const onAbort = () => {
       clearTimeout(timer);
-      reject(signal!.reason);
+      reject(signal?.reason);
     };
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);

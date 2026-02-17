@@ -25,18 +25,19 @@ function makeViemChain(chainId: number): Chain {
 function hasViemChain(
   config: EvmAdapterConfig,
 ): config is Extract<EvmAdapterConfig, { chain: unknown }> {
-  return (config as any).chain != null;
+  return "chain" in config && config.chain != null;
 }
 
 export function makeEvmAdapter(config: EvmAdapterConfig): EvmChainAdapter {
   const chainId = hasViemChain(config)
-    ? typeof (config.chain as any).chainId === "number"
-      ? (config.chain as any).chainId
-      : (config.chain as any).id
+    ? typeof (config.chain as Record<string, unknown>).chainId === "number"
+      ? ((config.chain as Record<string, unknown>).chainId as number)
+      : ((config.chain as Record<string, unknown>).id as number)
     : config.chainId;
   const chain: ChainRef = { id: `eip155:${chainId}` };
   const viemChain = hasViemChain(config)
-    ? ((config.chain as any).viem ?? config.chain)
+    ? (((config.chain as Record<string, unknown>).viem ??
+        config.chain) as Chain)
     : makeViemChain(chainId);
 
   const publicClient = createPublicClient({

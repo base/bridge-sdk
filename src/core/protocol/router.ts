@@ -69,13 +69,13 @@ function isBaseEvmChainId(id: string): boolean {
 function asSolanaAdapter(
   adapter: ChainAdapter,
 ): SolanaChainAdapter | undefined {
-  return (adapter as any)?.kind === "solana"
+  return "kind" in adapter && (adapter as SolanaChainAdapter).kind === "solana"
     ? (adapter as SolanaChainAdapter)
     : undefined;
 }
 
 function asEvmAdapter(adapter: ChainAdapter): EvmChainAdapter | undefined {
-  return (adapter as any)?.kind === "evm"
+  return "kind" in adapter && (adapter as EvmChainAdapter).kind === "evm"
     ? (adapter as EvmChainAdapter)
     : undefined;
 }

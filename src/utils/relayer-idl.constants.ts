@@ -37,7 +37,7 @@ type ParsedConstantValue<Name extends BaseRelayerConstantNames> =
                 Name,
                 "type"
               > extends {
-                array: any;
+                array: unknown;
               }
             ? number[]
             : BaseRelayerConstantField<

@@ -195,7 +195,10 @@ export class BaseEngine {
       throw new Error("Multiple MessageInitiated events found (unsupported)");
     }
 
-    const event = msgInitEvents[0]!;
+    const event = msgInitEvents[0];
+    if (!event) {
+      throw new Error("No MessageInitiated event found in transaction");
+    }
 
     const rawProof = await this.publicClient.readContract({
       address: this.config.base.bridgeContract,

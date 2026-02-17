@@ -80,7 +80,7 @@ import type {
   Rpc,
 } from "./types";
 
-interface BridgeOpResult {
+export interface BridgeOpResult {
   outgoingPda: SolAddress;
   signature: Signature;
 }
@@ -735,7 +735,8 @@ export class SolanaEngine {
     });
 
     const mint = await rpc.getAccountInfo(localToken).send();
-    if (!mint.value) {
+    const mintInfo = mint.value;
+    if (!mintInfo) {
       throw new Error("Mint not found");
     }
 
@@ -743,7 +744,7 @@ export class SolanaEngine {
       { address: localToken, role: AccountRole.READONLY },
       { address: tokenVaultPda, role: AccountRole.WRITABLE },
       { address: to, role: AccountRole.WRITABLE },
-      { address: mint.value!.owner, role: AccountRole.READONLY },
+      { address: mintInfo.owner, role: AccountRole.READONLY },
     ];
   }
 

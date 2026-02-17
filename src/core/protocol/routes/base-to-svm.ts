@@ -529,8 +529,8 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     try {
       const sig = await this.solanaEngine.handleExecuteMessage(messageHash);
       return { messageRef: ref, executionTx: sig };
-    } catch (e: any) {
-      const msg = String(e?.message ?? e);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("already been executed")) {
         throw new BridgeAlreadyExecutedError(
           "Message already executed on SVM",
@@ -628,7 +628,11 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
             topics: log.topics,
           });
           if (decoded.eventName !== "MessageInitiated") return null;
-          return decoded.args as any;
+          return decoded.args as {
+            messageHash: Hex;
+            mmrRoot: Hex;
+            message: { nonce: bigint; sender: Hex; data: Hex };
+          };
         } catch {
           return null;
         }
@@ -642,7 +646,13 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       );
     }
 
-    const e = events[0] as any;
+    const e = events[0];
+    if (!e) {
+      throw new BridgeProofNotAvailableError(
+        "No MessageInitiated event found in tx receipt",
+        { route: this.route, chain: this.route.sourceChain },
+      );
+    }
     return {
       messageHash: e.messageHash as Hex,
       mmrRoot: e.mmrRoot as Hex,

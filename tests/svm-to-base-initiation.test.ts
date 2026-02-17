@@ -38,9 +38,10 @@ function buildAdapter(): SvmToBaseRouteAdapter {
   // Stub deriveOuterHash (private method) to avoid RPC calls
   const deriveOuterHashMock = mock(() => Promise.resolve(FAKE_OUTER_HASH));
 
-  (adapter as any).solanaEngine = engineStub;
-  (adapter as any).route = route;
-  (adapter as any).deriveOuterHash = deriveOuterHashMock;
+  const stub = adapter as unknown as Record<string, unknown>;
+  stub.solanaEngine = engineStub;
+  stub.route = route;
+  stub.deriveOuterHash = deriveOuterHashMock;
 
   return adapter;
 }
@@ -93,7 +94,7 @@ describe("SvmToBaseRouteAdapter.initiate sets initiationTx", () => {
   });
 
   test("SPL token transfer path sets initiationTx to Solana signature", async () => {
-    (adapter as any).tokenMapping = {
+    (adapter as unknown as Record<string, unknown>).tokenMapping = {
       SoMeMiNtAdDrEsS: "0xRemoteToken",
     };
 

@@ -87,11 +87,18 @@ export function mergeBridgeDeployments(
   return {
     solana: mergeSolanaDeployments(
       DEFAULT_BRIDGE_DEPLOYMENTS.solana,
-      overrides?.solana as any,
+      overrides?.solana as
+        | Record<
+            ChainId,
+            Partial<{ bridgeProgram: SolAddress; relayerProgram: SolAddress }>
+          >
+        | undefined,
     ),
     base: mergeEvmDeployments(
       DEFAULT_BRIDGE_DEPLOYMENTS.base,
-      overrides?.base as any,
+      overrides?.base as
+        | Record<ChainId, Partial<{ bridgeContract: Hex }>>
+        | undefined,
     ),
   };
 }

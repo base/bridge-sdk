@@ -34,7 +34,7 @@ test("base-bridge: buildEvmIncomingMessage matches legacy BaseEngine hashing", (
         ],
       },
     },
-  } as any;
+  } as unknown as Account<OutgoingMessage, string>;
 
   const gasLimit = 123_456n;
 
@@ -54,13 +54,18 @@ test("base-bridge: buildEvmIncomingMessage matches legacy BaseEngine hashing", (
     },
   });
 
-  const legacyRes = (legacy as any).buildEvmMessage(outgoing, gasLimit) as {
+  const legacyRes = (
+    legacy as unknown as Record<string, (o: unknown, g: bigint) => unknown>
+  ).buildEvmMessage(outgoing, gasLimit) as {
     innerHash: `0x${string}`;
     outerHash: `0x${string}`;
-    evmMessage: any;
+    evmMessage: unknown;
   };
 
-  const newRes = buildEvmIncomingMessage(outgoing as any, { gasLimit });
+  const newRes = buildEvmIncomingMessage(
+    outgoing as unknown as Parameters<typeof buildEvmIncomingMessage>[0],
+    { gasLimit },
+  );
 
   expect(newRes.innerHash).toBe(legacyRes.innerHash);
   expect(newRes.outerHash).toBe(legacyRes.outerHash);
