@@ -55,7 +55,7 @@ test("base-bridge: buildEvmIncomingMessage matches legacy BaseEngine hashing", (
   });
 
   const legacyRes = (
-    legacy as unknown as Record<string, (o: unknown, g: bigint) => unknown>
+    legacy as unknown as { buildEvmMessage: (o: unknown, g: bigint) => unknown }
   ).buildEvmMessage(outgoing, gasLimit) as {
     innerHash: `0x${string}`;
     outerHash: `0x${string}`;
