@@ -219,197 +219,252 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
   }
 
   async initiate(req: BridgeRequest): Promise<BridgeOperation> {
+    if (req.action.kind === "call") {
+      return this.initiateCall(req);
+    }
+
+    if (req.action.kind === "transfer") {
+      switch (req.action.asset.kind) {
+        case "native":
+          return this.initiateNativeTransfer(req);
+        case "token":
+          return this.initiateTokenTransfer(req);
+        case "wrapped":
+          return this.initiateWrappedTransfer(req);
+        default: {
+          const _exhaustiveAsset: never = req.action.asset;
+          throw new BridgeUnsupportedActionError({
+            route: req.route,
+            actionKind: (_exhaustiveAsset as { kind: string }).kind,
+          });
+        }
+      }
+    }
+
+    // Exhaustive check - this should never be reached
+    const _exhaustive: never = req.action;
+    throw new BridgeUnsupportedActionError({
+      route: req.route,
+      actionKind: (_exhaustive as { kind: string }).kind,
+    });
+  }
+
+  /**
+   * Initiate a pure call action (EVM call only, no transfer).
+   */
+  private async initiateCall(req: BridgeRequest): Promise<BridgeOperation> {
+    if (req.action.kind !== "call") {
+      throw new Error("Expected call action");
+    }
+
     const relayMode = req.relay?.mode ?? "auto";
     const payForRelay = relayMode === "auto";
     const gasLimit = req.relay?.gasLimit ?? 100_000n;
 
-    if (req.action.kind === "call") {
-      const evmCall = this.extractEvmCall(req.action.call);
+    const evmCall = this.extractEvmCall(req.action.call);
 
-      const { outgoingPda, signature } = await this.solanaEngine.bridgeCall({
-        to: evmCall.to,
-        value: evmCall.value,
-        data: evmCall.data,
-        ty: evmCall.ty,
-        payForRelay,
-        gasLimit,
-        idempotencyKey: req.idempotencyKey,
-      });
-
-      const destinationHash = await this.deriveOuterHash(outgoingPda, gasLimit);
-
-      const messageRef: MessageRef = {
-        route: req.route,
-        source: {
-          chain: req.route.sourceChain,
-          id: { scheme: "solana:outgoingMessagePda", value: outgoingPda },
-        },
-        destination: {
-          chain: req.route.destinationChain,
-          id: { scheme: "evm:bridgeOuterHash", value: destinationHash },
-        },
-        derived: { gasLimit: gasLimit.toString() },
-      };
-
-      return {
-        route: req.route,
-        request: req,
-        messageRef,
-        initiationTx: signature,
-      };
-    }
-
-    if (req.action.kind === "transfer") {
-      // Extract optional EVM call for transfer+call
-      const evmCall = this.extractOptionalEvmCall(req.action.call);
-
-      if (req.action.asset.kind === "native") {
-        const { outgoingPda, signature } = await this.solanaEngine.bridgeSol({
-          to: req.action.recipient as `0x${string}`,
-          amount: req.action.amount,
-          payForRelay,
-          call: evmCall
-            ? {
-                to: evmCall.to,
-                value: evmCall.value,
-                data: evmCall.data,
-                ty: evmCall.ty,
-              }
-            : undefined,
-          gasLimit,
-          idempotencyKey: req.idempotencyKey,
-        });
-
-        const destinationHash = await this.deriveOuterHash(
-          outgoingPda,
-          gasLimit,
-        );
-
-        const messageRef: MessageRef = {
-          route: req.route,
-          source: {
-            chain: req.route.sourceChain,
-            id: { scheme: "solana:outgoingMessagePda", value: outgoingPda },
-          },
-          destination: {
-            chain: req.route.destinationChain,
-            id: { scheme: "evm:bridgeOuterHash", value: destinationHash },
-          },
-          derived: { gasLimit: gasLimit.toString() },
-        };
-
-        return {
-          route: req.route,
-          request: req,
-          messageRef,
-          initiationTx: signature,
-        };
-      }
-
-      if (req.action.asset.kind === "token") {
-        const mint = req.action.asset.address;
-        const remoteToken = this.tokenMapping?.[mint];
-        if (!remoteToken) {
-          throw new BridgeUnsupportedActionError({
-            route: req.route,
-            actionKind: "transfer(token): missing tokenMappings for mint",
-          });
-        }
-
-        const { outgoingPda, signature } = await this.solanaEngine.bridgeSpl({
-          to: req.action.recipient as `0x${string}`,
-          mint,
-          remoteToken,
-          amount: req.action.amount,
-          payForRelay,
-          call: evmCall
-            ? {
-                to: evmCall.to,
-                value: evmCall.value,
-                data: evmCall.data,
-                ty: evmCall.ty,
-              }
-            : undefined,
-          gasLimit,
-          idempotencyKey: req.idempotencyKey,
-        });
-
-        const destinationHash = await this.deriveOuterHash(
-          outgoingPda,
-          gasLimit,
-        );
-
-        const messageRef: MessageRef = {
-          route: req.route,
-          source: {
-            chain: req.route.sourceChain,
-            id: { scheme: "solana:outgoingMessagePda", value: outgoingPda },
-          },
-          destination: {
-            chain: req.route.destinationChain,
-            id: { scheme: "evm:bridgeOuterHash", value: destinationHash },
-          },
-          derived: { gasLimit: gasLimit.toString() },
-        };
-
-        return {
-          route: req.route,
-          request: req,
-          messageRef,
-          initiationTx: signature,
-        };
-      }
-
-      if (req.action.asset.kind === "wrapped") {
-        const { outgoingPda, signature } =
-          await this.solanaEngine.bridgeWrapped({
-            to: req.action.recipient as `0x${string}`,
-            mint: req.action.asset.address,
-            amount: req.action.amount,
-            payForRelay,
-            call: evmCall
-              ? {
-                  to: evmCall.to,
-                  value: evmCall.value,
-                  data: evmCall.data,
-                  ty: evmCall.ty,
-                }
-              : undefined,
-            gasLimit,
-            idempotencyKey: req.idempotencyKey,
-          });
-
-        const destinationHash = await this.deriveOuterHash(
-          outgoingPda,
-          gasLimit,
-        );
-
-        const messageRef: MessageRef = {
-          route: req.route,
-          source: {
-            chain: req.route.sourceChain,
-            id: { scheme: "solana:outgoingMessagePda", value: outgoingPda },
-          },
-          destination: {
-            chain: req.route.destinationChain,
-            id: { scheme: "evm:bridgeOuterHash", value: destinationHash },
-          },
-          derived: { gasLimit: gasLimit.toString() },
-        };
-
-        return {
-          route: req.route,
-          request: req,
-          messageRef,
-          initiationTx: signature,
-        };
-      }
-    }
-
-    throw new BridgeUnsupportedActionError({
-      route: req.route,
-      actionKind: req.action.kind,
+    const { outgoingPda, signature } = await this.solanaEngine.bridgeCall({
+      to: evmCall.to,
+      value: evmCall.value,
+      data: evmCall.data,
+      ty: evmCall.ty,
+      payForRelay,
+      gasLimit,
+      idempotencyKey: req.idempotencyKey,
     });
+
+    const destinationHash = await this.deriveOuterHash(outgoingPda, gasLimit);
+
+    return {
+      route: req.route,
+      request: req,
+      messageRef: this.buildMessageRef(
+        req.route,
+        outgoingPda,
+        destinationHash,
+        gasLimit,
+      ),
+      initiationTx: signature,
+    };
+  }
+
+  /**
+   * Initiate a native (SOL) transfer, optionally with an EVM call.
+   */
+  private async initiateNativeTransfer(
+    req: BridgeRequest,
+  ): Promise<BridgeOperation> {
+    if (req.action.kind !== "transfer") {
+      throw new Error("Expected transfer action");
+    }
+
+    const relayMode = req.relay?.mode ?? "auto";
+    const payForRelay = relayMode === "auto";
+    const gasLimit = req.relay?.gasLimit ?? 100_000n;
+
+    const evmCall = this.extractOptionalEvmCall(req.action.call);
+
+    const { outgoingPda, signature } = await this.solanaEngine.bridgeSol({
+      to: req.action.recipient as `0x${string}`,
+      amount: req.action.amount,
+      payForRelay,
+      call: evmCall
+        ? {
+            to: evmCall.to,
+            value: evmCall.value,
+            data: evmCall.data,
+            ty: evmCall.ty,
+          }
+        : undefined,
+      gasLimit,
+      idempotencyKey: req.idempotencyKey,
+    });
+
+    const destinationHash = await this.deriveOuterHash(outgoingPda, gasLimit);
+
+    return {
+      route: req.route,
+      request: req,
+      messageRef: this.buildMessageRef(
+        req.route,
+        outgoingPda,
+        destinationHash,
+        gasLimit,
+      ),
+      initiationTx: signature,
+    };
+  }
+
+  /**
+   * Initiate an SPL token transfer, optionally with an EVM call.
+   */
+  private async initiateTokenTransfer(
+    req: BridgeRequest,
+  ): Promise<BridgeOperation> {
+    if (req.action.kind !== "transfer" || req.action.asset.kind !== "token") {
+      throw new Error("Expected token transfer action");
+    }
+
+    const relayMode = req.relay?.mode ?? "auto";
+    const payForRelay = relayMode === "auto";
+    const gasLimit = req.relay?.gasLimit ?? 100_000n;
+
+    const evmCall = this.extractOptionalEvmCall(req.action.call);
+
+    const mint = req.action.asset.address;
+    const remoteToken = this.tokenMapping?.[mint];
+    if (!remoteToken) {
+      throw new BridgeUnsupportedActionError({
+        route: req.route,
+        actionKind: "transfer(token): missing tokenMappings for mint",
+      });
+    }
+
+    const { outgoingPda, signature } = await this.solanaEngine.bridgeSpl({
+      to: req.action.recipient as `0x${string}`,
+      mint,
+      remoteToken,
+      amount: req.action.amount,
+      payForRelay,
+      call: evmCall
+        ? {
+            to: evmCall.to,
+            value: evmCall.value,
+            data: evmCall.data,
+            ty: evmCall.ty,
+          }
+        : undefined,
+      gasLimit,
+      idempotencyKey: req.idempotencyKey,
+    });
+
+    const destinationHash = await this.deriveOuterHash(outgoingPda, gasLimit);
+
+    return {
+      route: req.route,
+      request: req,
+      messageRef: this.buildMessageRef(
+        req.route,
+        outgoingPda,
+        destinationHash,
+        gasLimit,
+      ),
+      initiationTx: signature,
+    };
+  }
+
+  /**
+   * Initiate a wrapped token transfer, optionally with an EVM call.
+   */
+  private async initiateWrappedTransfer(
+    req: BridgeRequest,
+  ): Promise<BridgeOperation> {
+    if (req.action.kind !== "transfer" || req.action.asset.kind !== "wrapped") {
+      throw new Error("Expected wrapped transfer action");
+    }
+
+    const relayMode = req.relay?.mode ?? "auto";
+    const payForRelay = relayMode === "auto";
+    const gasLimit = req.relay?.gasLimit ?? 100_000n;
+
+    const evmCall = this.extractOptionalEvmCall(req.action.call);
+
+    const { outgoingPda, signature } = await this.solanaEngine.bridgeWrapped({
+      to: req.action.recipient as `0x${string}`,
+      mint: req.action.asset.address,
+      amount: req.action.amount,
+      payForRelay,
+      call: evmCall
+        ? {
+            to: evmCall.to,
+            value: evmCall.value,
+            data: evmCall.data,
+            ty: evmCall.ty,
+          }
+        : undefined,
+      gasLimit,
+      idempotencyKey: req.idempotencyKey,
+    });
+
+    const destinationHash = await this.deriveOuterHash(outgoingPda, gasLimit);
+
+    return {
+      route: req.route,
+      request: req,
+      messageRef: this.buildMessageRef(
+        req.route,
+        outgoingPda,
+        destinationHash,
+        gasLimit,
+      ),
+      initiationTx: signature,
+    };
+  }
+
+  /**
+   * Build a MessageRef for SVM → Base initiation.
+   *
+   * Unlike Base→SVM (where the destination is deferred to the prove step),
+   * SVM→Base derives the destination outerHash immediately via `deriveOuterHash()`.
+   */
+  private buildMessageRef(
+    route: BridgeRoute,
+    outgoingPda: string,
+    destinationHash: string,
+    gasLimit: bigint,
+  ): MessageRef {
+    return {
+      route,
+      source: {
+        chain: route.sourceChain,
+        id: { scheme: "solana:outgoingMessagePda", value: outgoingPda },
+      },
+      destination: {
+        chain: route.destinationChain,
+        id: { scheme: "evm:bridgeOuterHash", value: destinationHash },
+      },
+      derived: { gasLimit: gasLimit.toString() },
+    };
   }
 
   /**
