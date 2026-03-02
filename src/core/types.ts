@@ -348,6 +348,11 @@ export interface RouteAdapter {
    * If not supported, the adapter MUST throw `BridgeUnsupportedStepError`.
    */
   quote(req: QuoteRequest): Promise<Quote>;
+  /**
+   * Initiate a cross-chain bridge operation. The adapter dispatches
+   * internally based on the action kind (call vs transfer) and, for
+   * transfers, the asset kind (native, token, wrapped).
+   */
   initiate(req: BridgeRequest): Promise<BridgeOperation>;
   /**
    * Optional steps. If a step is not supported, the adapter MUST throw

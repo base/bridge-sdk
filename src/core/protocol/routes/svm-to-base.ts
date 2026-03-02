@@ -57,7 +57,13 @@ const MIN_TIME_MS = 30_000;
 const MAX_TIME_MS = 120_000;
 
 /**
- * SVM -> Base route adapter
+ * SVM -> Base route adapter.
+ *
+ * `initiate()` dispatches to private helpers by action kind / asset kind,
+ * mirroring the dispatcher pattern used by {@link BaseToSvmRouteAdapter}.
+ * Common post-initiation work (outer-hash derivation, MessageRef construction,
+ * and BridgeOperation assembly) is consolidated in {@link buildOperation} and
+ * {@link buildMessageRef}.
  *
  * Note: We keep the underlying chain IDs as `solana:*` for now, but route naming
  * uses the more general "SVM" terminology.
@@ -377,7 +383,8 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
   }
 
   /**
-   * Extract common defaults shared by all transfer initiation helpers.
+   * Extract common defaults shared by all transfer initiation helpers:
+   * the optional EVM destination call, gas limit, and relay-payment flag.
    */
   private transferDefaults(req: BridgeRequest): {
     evmCall: EvmCall | undefined;
