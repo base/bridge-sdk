@@ -254,7 +254,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     }
 
     const evmCall = this.extractEvmCall(req.action.call);
-    const gasLimit = req.relay?.gasLimit ?? 100_000n;
+    const gasLimit = req.relay?.gasLimit ?? DEFAULT_GAS_LIMIT;
     const payForRelay = (req.relay?.mode ?? "auto") === "auto";
 
     const { outgoingPda, signature } = await this.solanaEngine.bridgeCall({
@@ -280,9 +280,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       throw new Error("Expected transfer action");
     }
 
-    const evmCall = this.extractOptionalEvmCall(req.action.call);
-    const gasLimit = req.relay?.gasLimit ?? 100_000n;
-    const payForRelay = (req.relay?.mode ?? "auto") === "auto";
+    const { evmCall, gasLimit, payForRelay } = this.transferDefaults(req);
 
     const { outgoingPda, signature } = await this.solanaEngine.bridgeSol({
       to: req.action.recipient as `0x${string}`,
@@ -323,9 +321,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       });
     }
 
-    const evmCall = this.extractOptionalEvmCall(req.action.call);
-    const gasLimit = req.relay?.gasLimit ?? 100_000n;
-    const payForRelay = (req.relay?.mode ?? "auto") === "auto";
+    const { evmCall, gasLimit, payForRelay } = this.transferDefaults(req);
 
     const { outgoingPda, signature } = await this.solanaEngine.bridgeSpl({
       to: req.action.recipient as `0x${string}`,
@@ -354,17 +350,15 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
   private async initiateWrappedTransfer(
     req: BridgeRequest,
   ): Promise<BridgeOperation> {
-    if (req.action.kind !== "transfer") {
-      throw new Error("Expected transfer action");
+    if (req.action.kind !== "transfer" || req.action.asset.kind !== "wrapped") {
+      throw new Error("Expected wrapped transfer action");
     }
 
-    const evmCall = this.extractOptionalEvmCall(req.action.call);
-    const gasLimit = req.relay?.gasLimit ?? 100_000n;
-    const payForRelay = (req.relay?.mode ?? "auto") === "auto";
+    const { evmCall, gasLimit, payForRelay } = this.transferDefaults(req);
 
     const { outgoingPda, signature } = await this.solanaEngine.bridgeWrapped({
       to: req.action.recipient as `0x${string}`,
-      mint: req.action.asset.kind === "wrapped" ? req.action.asset.address : "",
+      mint: req.action.asset.address,
       amount: req.action.amount,
       payForRelay,
       call: evmCall
@@ -380,6 +374,23 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     });
 
     return this.buildOperation({ req, outgoingPda, signature, gasLimit });
+  }
+
+  /**
+   * Extract common defaults shared by all transfer initiation helpers.
+   */
+  private transferDefaults(req: BridgeRequest): {
+    evmCall: EvmCall | undefined;
+    gasLimit: bigint;
+    payForRelay: boolean;
+  } {
+    return {
+      evmCall: this.extractOptionalEvmCall(
+        (req.action as { call?: DestinationCall }).call,
+      ),
+      gasLimit: req.relay?.gasLimit ?? DEFAULT_GAS_LIMIT,
+      payForRelay: (req.relay?.mode ?? "auto") === "auto",
+    };
   }
 
   /**
