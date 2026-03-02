@@ -313,7 +313,8 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       throw new Error("Expected transfer action");
     }
 
-    const mint = req.action.asset.kind === "token" ? req.action.asset.address : undefined;
+    const mint =
+      req.action.asset.kind === "token" ? req.action.asset.address : undefined;
     const remoteToken = mint ? this.tokenMapping?.[mint] : undefined;
     if (!mint || !remoteToken) {
       throw new BridgeUnsupportedActionError({
