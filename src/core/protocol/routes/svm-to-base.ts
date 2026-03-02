@@ -218,6 +218,21 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     return quote;
   }
 
+  /**
+   * Dispatcher for SVM → Base initiation.
+   *
+   * Delegates to one of four private helpers based on the action kind and,
+   * for transfers, the asset kind:
+   *
+   * - `initiateCall`            — pure EVM call (no transfer)
+   * - `initiateNativeTransfer`  — SOL transfer (± EVM call)
+   * - `initiateTokenTransfer`   — SPL token transfer (± EVM call)
+   * - `initiateWrappedTransfer` — wrapped token transfer (± EVM call)
+   *
+   * Uses TypeScript exhaustiveness checking (`never`) at both the action
+   * and asset levels to guarantee all variants are handled at compile time.
+   * This mirrors the dispatcher pattern in {@link BaseToSvmRouteAdapter.initiate}.
+   */
   async initiate(req: BridgeRequest): Promise<BridgeOperation> {
     if (req.action.kind === "call") {
       return this.initiateCall(req);
@@ -241,13 +256,16 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       }
     }
 
-    // Exhaustive check - this should never be reached
     const _exhaustive: never = req.action;
     throw new BridgeUnsupportedActionError({
       route: req.route,
       actionKind: (_exhaustive as { kind: string }).kind,
     });
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Initiation helpers — one per action/asset variant
+  // ───────────────────────────────────────────────────────────────────────────
 
   /**
    * Initiate a pure call action (EVM call only, no transfer).
