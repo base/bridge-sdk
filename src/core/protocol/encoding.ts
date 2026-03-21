@@ -1,5 +1,4 @@
 import {
-  getBase58Codec,
   getBase58Encoder,
   type Address as SolAddress,
 } from "@solana/kit";
@@ -17,8 +16,30 @@ export const MESSAGE_TYPE = {
   TransferAndCall: 2,
 } as const;
 
+const base58Encoder = getBase58Encoder();
+
+const TRANSFER_TUPLE_ABI = {
+  type: "tuple",
+  components: [
+    { name: "localToken", type: "address" },
+    { name: "remoteToken", type: "bytes32" },
+    { name: "to", type: "bytes32" },
+    { name: "remoteAmount", type: "uint64" },
+  ],
+} as const;
+
+const CALL_TUPLE_ABI = {
+  type: "tuple",
+  components: [
+    { name: "ty", type: "uint8" },
+    { name: "to", type: "address" },
+    { name: "value", type: "uint128" },
+    { name: "data", type: "bytes" },
+  ],
+} as const;
+
 export function bytes32FromSolanaPubkey(pubkey: SolAddress): Hex {
-  const bytes = getBase58Encoder().encode(pubkey);
+  const bytes = base58Encoder.encode(pubkey);
   let hex = toHex(new Uint8Array(bytes));
   if (hex.length !== 66) hex = padHex(hex, { size: 32 });
   return hex;
@@ -49,48 +70,17 @@ export function encodeOutgoingMessagePayload(
       remoteAmount: BigInt(transfer.amount),
     } as const;
 
-    const encodedTransfer = encodeAbiParameters(
-      [
-        {
-          type: "tuple",
-          components: [
-            { name: "localToken", type: "address" },
-            { name: "remoteToken", type: "bytes32" },
-            { name: "to", type: "bytes32" },
-            { name: "remoteAmount", type: "uint64" },
-          ],
-        },
-      ],
-      [transferTuple],
-    );
-
     if (transfer.call.__option === "None") {
-      return { ty: MESSAGE_TYPE.Transfer, data: encodedTransfer };
+      const data = encodeAbiParameters(
+        [TRANSFER_TUPLE_ABI],
+        [transferTuple],
+      );
+      return { ty: MESSAGE_TYPE.Transfer, data };
     }
 
-    const call = transfer.call.value;
-    const callTuple = callTupleObject(call);
+    const callTuple = callTupleObject(transfer.call.value);
     const data = encodeAbiParameters(
-      [
-        {
-          type: "tuple",
-          components: [
-            { name: "localToken", type: "address" },
-            { name: "remoteToken", type: "bytes32" },
-            { name: "to", type: "bytes32" },
-            { name: "remoteAmount", type: "uint64" },
-          ],
-        },
-        {
-          type: "tuple",
-          components: [
-            { name: "ty", type: "uint8" },
-            { name: "to", type: "address" },
-            { name: "value", type: "uint128" },
-            { name: "data", type: "bytes" },
-          ],
-        },
-      ],
+      [TRANSFER_TUPLE_ABI, CALL_TUPLE_ABI],
       [transferTuple, callTuple],
     );
 
@@ -103,29 +93,7 @@ export function encodeOutgoingMessagePayload(
 }
 
 export function encodeCallData(call: Call): Hex {
-  const evmTo = toHex(new Uint8Array(call.to));
-
-  return encodeAbiParameters(
-    [
-      {
-        type: "tuple",
-        components: [
-          { name: "ty", type: "uint8" },
-          { name: "to", type: "address" },
-          { name: "value", type: "uint128" },
-          { name: "data", type: "bytes" },
-        ],
-      },
-    ],
-    [
-      {
-        ty: Number(call.ty),
-        to: evmTo,
-        value: BigInt(call.value),
-        data: toHex(new Uint8Array(call.data)),
-      },
-    ],
-  );
+  return encodeAbiParameters([CALL_TUPLE_ABI], [callTupleObject(call)]);
 }
 
 export function callTupleObject(call: Call) {
@@ -141,8 +109,7 @@ export function callTupleObject(call: Call) {
 export function outgoingMessagePubkeyBytes32(
   outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
 ): Hex {
-  const pubkeyBase58 = getBase58Codec().encode(outgoing.address);
-  return `0x${pubkeyBase58.toHex()}` as Hex;
+  return bytes32FromSolanaPubkey(outgoing.address);
 }
 
 const INNER_HASH_ABI = [
