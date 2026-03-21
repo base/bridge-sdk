@@ -2,17 +2,14 @@ import type { Instruction, Address as SolAddress } from "@solana/kit";
 import {
   AccountRole,
   createSolanaRpc,
-  getProgramDerivedAddress,
   address as solAddress,
 } from "@solana/kit";
 import type { Hash, Hex } from "viem";
-import { decodeEventLog, toBytes } from "viem";
+import { toBytes } from "viem";
 import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
 import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
 import type { Ix } from "../../../clients/ts/src/bridge";
 import { fetchMaybeIncomingMessage } from "../../../clients/ts/src/bridge";
-import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
-import { getIdlConstant } from "../../../utils/bridge-idl.constants";
 import {
   BridgeAlreadyExecutedError,
   BridgeNotProvenError,
@@ -40,6 +37,8 @@ import type {
   StatusOptions,
 } from "../../types";
 import { isSolanaDestinationCall } from "../../utils";
+import { decodeMessageInitiatedEvents } from "../events";
+import { deriveIncomingMessagePda } from "../pda";
 import { BaseEngine } from "../engines/base-engine";
 import { SOLANA_BASE_TX_FEE } from "../engines/constants";
 import { SolanaEngine } from "../engines/solana-engine";
@@ -95,6 +94,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
   private readonly solanaEngine: SolanaEngine;
   private readonly baseEngine: BaseEngine;
   private readonly solanaRpc: ReturnType<typeof createSolanaRpc>;
+  private readonly pdaCache = new Map<Hex, SolAddress>();
 
   constructor(args: {
     route: BridgeRoute;
@@ -251,16 +251,11 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     warnings: string[],
   ): Promise<bigint> {
     // Extract instructions from the request
-    let instructions: SolanaInstruction[] = [];
-    if (req.action.kind === "call") {
-      if (isSolanaDestinationCall(req.action.call)) {
-        instructions = req.action.call.call.instructions;
-      }
-    } else if (req.action.kind === "transfer" && req.action.call) {
-      if (isSolanaDestinationCall(req.action.call)) {
-        instructions = req.action.call.call.instructions;
-      }
-    }
+    const destCall = req.action.call;
+    const instructions: SolanaInstruction[] =
+      destCall && isSolanaDestinationCall(destCall)
+        ? destCall.call.instructions
+        : [];
 
     if (instructions.length === 0) {
       // No custom instructions, just the bridge execute overhead
@@ -520,8 +515,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       const sig = await this.solanaEngine.handleExecuteMessage(messageHash);
       return { messageRef: ref, executionTx: sig };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("already been executed")) {
+      if (e instanceof BridgeAlreadyExecutedError) {
         throw new BridgeAlreadyExecutedError(
           "Message already executed on SVM",
           {
@@ -530,7 +524,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
           },
         );
       }
-      if (msg.includes("Ensure it has been proven")) {
+      if (e instanceof BridgeNotProvenError) {
         throw new BridgeNotProvenError("Message not proven on SVM", {
           route: ref.route,
           chain: ref.route.destinationChain,
@@ -551,7 +545,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
         : undefined;
     if (!messageHash) return { type: "Unknown", at };
 
-    const pda = await this.deriveIncomingMessagePda(messageHash);
+    const pda = await this.deriveIncomingMessagePdaCached(messageHash);
 
     const maybe = await fetchMaybeIncomingMessage(this.solanaRpc, pda, {
       abortSignal: opts?.signal,
@@ -575,16 +569,17 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     return pollingMonitor((signal) => this.status(ref, { signal }), opts);
   }
 
-  private async deriveIncomingMessagePda(
+  private async deriveIncomingMessagePdaCached(
     messageHash: Hex,
   ): Promise<SolAddress> {
-    const [pda] = await getProgramDerivedAddress({
-      programAddress: this.solanaDeployment.bridgeProgram,
-      seeds: [
-        Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),
-        Buffer.from(toBytes(messageHash)),
-      ],
-    });
+    const cached = this.pdaCache.get(messageHash);
+    if (cached) return cached;
+
+    const pda = await deriveIncomingMessagePda(
+      this.solanaDeployment.bridgeProgram,
+      messageHash,
+    );
+    this.pdaCache.set(messageHash, pda);
     return pda;
   }
 
@@ -598,25 +593,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const receipt = await this.evm.publicClient.getTransactionReceipt({
       hash: txHash,
     });
-    const events = receipt.logs
-      .map((log) => {
-        try {
-          const decoded = decodeEventLog({
-            abi: BRIDGE_ABI,
-            data: log.data,
-            topics: log.topics,
-          });
-          if (decoded.eventName !== "MessageInitiated") return null;
-          return decoded.args as {
-            messageHash: Hex;
-            mmrRoot: Hex;
-            message: { nonce: bigint; sender: Hex; data: Hex };
-          };
-        } catch {
-          return null;
-        }
-      })
-      .filter((x) => x !== null);
+    const events = decodeMessageInitiatedEvents(receipt.logs);
 
     if (events.length !== 1) {
       throw new BridgeProofNotAvailableError(

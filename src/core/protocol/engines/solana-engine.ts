@@ -63,6 +63,11 @@ import { getIdlConstant } from "../../../utils/bridge-idl.constants";
 import { getRelayerIdlConstant } from "../../../utils/relayer-idl.constants";
 import { sleep } from "../../../utils/time";
 import {
+  BridgeAlreadyExecutedError,
+  BridgeNotProvenError,
+} from "../../errors";
+import { deriveIncomingMessagePda } from "../pda";
+import {
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
   DEFAULT_RELAY_GAS_LIMIT,
@@ -540,7 +545,7 @@ export class SolanaEngine {
 
     const payer = this.config.solana.payer;
 
-    const [[bridgeAddress], [outputRootAddress], [messageAddress]] =
+    const [[bridgeAddress], [outputRootAddress], messageAddress] =
       await Promise.all([
         getProgramDerivedAddress({
           programAddress: this.config.solana.bridgeProgram,
@@ -553,13 +558,10 @@ export class SolanaEngine {
             getU64Encoder({ endian: Endian.Little }).encode(blockNumber),
           ],
         }),
-        getProgramDerivedAddress({
-          programAddress: this.config.solana.bridgeProgram,
-          seeds: [
-            Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),
-            toBytes(event.messageHash),
-          ],
-        }),
+        deriveIncomingMessagePda(
+          this.config.solana.bridgeProgram,
+          event.messageHash,
+        ),
       ]);
 
     const maybeMessage = await fetchMaybeIncomingMessage(rpc, messageAddress);
@@ -593,27 +595,28 @@ export class SolanaEngine {
 
     const payer = this.config.solana.payer;
 
-    const [messagePda] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
-      seeds: [
-        Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),
-        toBytes(messageHash),
-      ],
-    });
+    const messagePda = await deriveIncomingMessagePda(
+      this.config.solana.bridgeProgram,
+      messageHash,
+    );
 
     const maybeIncomingMessage = await fetchMaybeIncomingMessage(
       rpc,
       messagePda,
     );
     if (!maybeIncomingMessage.exists) {
-      throw new Error(
+      throw new BridgeNotProvenError(
         `Message not found at ${messagePda}. Ensure it has been proven on Solana first.`,
+        {},
       );
     }
     const incomingMessage = maybeIncomingMessage;
 
     if (incomingMessage.data.executed) {
-      throw new Error("Message has already been executed");
+      throw new BridgeAlreadyExecutedError(
+        "Message has already been executed",
+        {},
+      );
     }
 
     const [bridgeCpiAuthorityPda] = await getProgramDerivedAddress({
