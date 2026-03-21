@@ -1,5 +1,4 @@
 import { type Address as SolAddress, address as solAddress } from "@solana/kit";
-import type { Hex } from "viem";
 import type { ChainId } from "../types";
 import { BASE_MAINNET_CHAIN_ID, type BridgeConfig } from "./router";
 
@@ -28,54 +27,22 @@ export const DEFAULT_BRIDGE_DEPLOYMENTS: BridgeConfig["deployments"] = {
 
 type Deployments = BridgeConfig["deployments"];
 
-function mergeSolanaDeployments(
-  base: Record<
-    ChainId,
-    { bridgeProgram: SolAddress; relayerProgram: SolAddress }
-  >,
-  override?:
-    | Record<
-        ChainId,
-        Partial<{ bridgeProgram: SolAddress; relayerProgram: SolAddress }>
-      >
-    | undefined,
-): Record<ChainId, { bridgeProgram: SolAddress; relayerProgram: SolAddress }> {
+function mergeRecords<T extends Record<string, unknown>>(
+  base: Record<ChainId, T>,
+  override?: Record<ChainId, Partial<T>>,
+): Record<ChainId, T> {
   if (!override) return base;
-  const out: Record<
-    ChainId,
-    { bridgeProgram: SolAddress; relayerProgram: SolAddress }
-  > = { ...base };
+  const out: Record<ChainId, T> = { ...base };
   for (const [chainId, dep] of Object.entries(override)) {
     const existing = out[chainId];
     if (existing) {
-      out[chainId] = {
-        bridgeProgram: dep.bridgeProgram ?? existing.bridgeProgram,
-        relayerProgram: dep.relayerProgram ?? existing.relayerProgram,
-      };
-    } else if (dep.bridgeProgram && dep.relayerProgram) {
-      out[chainId] = {
-        bridgeProgram: dep.bridgeProgram,
-        relayerProgram: dep.relayerProgram,
-      };
-    }
-  }
-  return out;
-}
-
-function mergeEvmDeployments(
-  base: Record<ChainId, { bridgeContract: Hex }>,
-  override?: Record<ChainId, Partial<{ bridgeContract: Hex }>> | undefined,
-): Record<ChainId, { bridgeContract: Hex }> {
-  if (!override) return base;
-  const out: Record<ChainId, { bridgeContract: Hex }> = { ...base };
-  for (const [chainId, dep] of Object.entries(override)) {
-    const existing = out[chainId];
-    if (existing) {
-      out[chainId] = {
-        bridgeContract: dep.bridgeContract ?? existing.bridgeContract,
-      };
-    } else if (dep.bridgeContract) {
-      out[chainId] = { bridgeContract: dep.bridgeContract };
+      const merged: Record<string, unknown> = { ...existing };
+      for (const [key, value] of Object.entries(dep)) {
+        if (value != null) merged[key] = value;
+      }
+      out[chainId] = merged as T;
+    } else if (Object.values(dep).every((v) => v != null)) {
+      out[chainId] = dep as T;
     }
   }
   return out;
@@ -85,20 +52,7 @@ export function mergeBridgeDeployments(
   overrides?: Partial<Deployments>,
 ): Deployments {
   return {
-    solana: mergeSolanaDeployments(
-      DEFAULT_BRIDGE_DEPLOYMENTS.solana,
-      overrides?.solana as
-        | Record<
-            ChainId,
-            Partial<{ bridgeProgram: SolAddress; relayerProgram: SolAddress }>
-          >
-        | undefined,
-    ),
-    base: mergeEvmDeployments(
-      DEFAULT_BRIDGE_DEPLOYMENTS.base,
-      overrides?.base as
-        | Record<ChainId, Partial<{ bridgeContract: Hex }>>
-        | undefined,
-    ),
+    solana: mergeRecords(DEFAULT_BRIDGE_DEPLOYMENTS.solana, overrides?.solana),
+    base: mergeRecords(DEFAULT_BRIDGE_DEPLOYMENTS.base, overrides?.base),
   };
 }
