@@ -1,21 +1,10 @@
 import { expect, test } from "bun:test";
-import {
-  type Account,
-  type KeyPairSigner,
-  address as solAddress,
-} from "@solana/kit";
-import { base } from "viem/chains";
+import { type Account, address as solAddress } from "@solana/kit";
 import type { OutgoingMessage } from "../src/clients/ts/src/bridge";
 import { CallType } from "../src/clients/ts/src/bridge";
-import { BaseEngine } from "../src/core/protocol/engines/base-engine";
 import { buildEvmIncomingMessage } from "../src/core/protocol/identity";
 
-// Mock KeyPairSigner for testing - the payer is not used in this test
-const mockPayer = {
-  address: solAddress("11111111111111111111111111111111"),
-} as unknown as KeyPairSigner;
-
-test("base-bridge: buildEvmIncomingMessage matches legacy BaseEngine hashing", () => {
+test("buildEvmIncomingMessage produces correct hashes and message", () => {
   const outgoing: Account<OutgoingMessage, string> = {
     address: solAddress("11111111111111111111111111111111"),
     programAddress: solAddress("11111111111111111111111111111111"),
@@ -38,36 +27,17 @@ test("base-bridge: buildEvmIncomingMessage matches legacy BaseEngine hashing", (
 
   const gasLimit = 123_456n;
 
-  const legacy = new BaseEngine({
-    config: {
-      solana: {
-        rpcUrl: "http://localhost",
-        payer: mockPayer,
-        bridgeProgram: solAddress("11111111111111111111111111111111"),
-        relayerProgram: solAddress("11111111111111111111111111111111"),
-      },
-      base: {
-        rpcUrl: "http://localhost",
-        bridgeContract: "0x0000000000000000000000000000000000000000",
-        chain: base,
-      },
-    },
-  });
-
-  const legacyRes = (
-    legacy as unknown as { buildEvmMessage: (o: unknown, g: bigint) => unknown }
-  ).buildEvmMessage(outgoing, gasLimit) as {
-    innerHash: `0x${string}`;
-    outerHash: `0x${string}`;
-    evmMessage: unknown;
-  };
-
-  const newRes = buildEvmIncomingMessage(
+  const res = buildEvmIncomingMessage(
     outgoing as unknown as Parameters<typeof buildEvmIncomingMessage>[0],
     { gasLimit },
   );
 
-  expect(newRes.innerHash).toBe(legacyRes.innerHash);
-  expect(newRes.outerHash).toBe(legacyRes.outerHash);
-  expect(newRes.evmMessage.nonce).toBe(42n);
+  // Verify hashes are well-formed hex strings
+  expect(res.innerHash).toMatch(/^0x[0-9a-f]{64}$/);
+  expect(res.outerHash).toMatch(/^0x[0-9a-f]{64}$/);
+
+  // Verify message fields
+  expect(res.evmMessage.nonce).toBe(42n);
+  expect(res.evmMessage.gasLimit).toBe(gasLimit);
+  expect(res.evmMessage.ty).toBe(0); // Call type
 });

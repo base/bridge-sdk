@@ -1,27 +1,17 @@
-import {
-  type Account,
-  type Address,
-  getBase58Codec,
-  getBase58Encoder,
-} from "@solana/kit";
+import { type Account, type Address } from "@solana/kit";
 import {
   createPublicClient,
   createWalletClient,
   decodeEventLog,
-  encodeAbiParameters,
   type Hash,
   type Hex,
   http,
-  keccak256,
   type PublicClient,
-  padHex,
   toHex,
   type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
-  type Call,
-  type fetchOutgoingMessage,
   getIxAccountEncoder,
   type Ix,
   type OutgoingMessage,
@@ -30,12 +20,14 @@ import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
 import { type Logger, NOOP_LOGGER } from "../../../utils/logger";
 import { sleep } from "../../../utils/time";
+import { bytes32FromSolanaPubkey } from "../encoding";
+import { buildEvmIncomingMessage } from "../identity";
 import {
   DEFAULT_EVM_GAS_LIMIT,
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
 } from "./constants";
-import { type CallParams, type EngineConfig, MessageType } from "./types";
+import type { CallParams, EngineConfig } from "./types";
 
 export interface BaseEngineOpts {
   config: EngineConfig;
@@ -90,6 +82,18 @@ export class BaseEngine {
     return this.validatorAddressPromise;
   }
 
+  private requireWallet() {
+    if (!this.walletClient || !this.config.base.privateKey) {
+      throw new Error(
+        "Base wallet client not initialized (missing privateKey)",
+      );
+    }
+    return {
+      walletClient: this.walletClient,
+      account: privateKeyToAccount(this.config.base.privateKey),
+    };
+  }
+
   async estimateGasForCall(call: CallParams): Promise<bigint> {
     return await this.publicClient.estimateGas({
       account: this.config.base.bridgeContract,
@@ -100,13 +104,7 @@ export class BaseEngine {
   }
 
   async bridgeCall(opts: BaseBridgeCallOpts): Promise<Hash> {
-    if (!this.walletClient || !this.config.base.privateKey) {
-      throw new Error(
-        "Base wallet client not initialized (missing privateKey)",
-      );
-    }
-
-    const account = privateKeyToAccount(this.config.base.privateKey);
+    const { walletClient, account } = this.requireWallet();
     const formattedIxs = this.formatIxs(opts.ixs);
 
     const { request } = await this.publicClient.simulateContract({
@@ -118,23 +116,17 @@ export class BaseEngine {
       chain: this.config.base.chain,
     });
 
-    return await this.walletClient.writeContract(request);
+    return await walletClient.writeContract(request);
   }
 
   async bridgeToken(opts: BaseBridgeTokenOpts): Promise<Hash> {
-    if (!this.walletClient || !this.config.base.privateKey) {
-      throw new Error(
-        "Base wallet client not initialized (missing privateKey)",
-      );
-    }
-
-    const account = privateKeyToAccount(this.config.base.privateKey);
+    const { walletClient, account } = this.requireWallet();
     const formattedIxs = this.formatIxs(opts.ixs);
 
     const transferStruct = {
       localToken: opts.transfer.localToken,
-      remoteToken: this.bytes32FromPubkey(opts.transfer.remoteToken),
-      to: this.bytes32FromPubkey(opts.transfer.to),
+      remoteToken: bytes32FromSolanaPubkey(opts.transfer.remoteToken),
+      to: bytes32FromSolanaPubkey(opts.transfer.to),
       remoteAmount: opts.transfer.amount,
     };
 
@@ -147,7 +139,7 @@ export class BaseEngine {
       chain: this.config.base.chain,
     });
 
-    return await this.walletClient.writeContract(request);
+    return await walletClient.writeContract(request);
   }
 
   async generateProof(transactionHash: Hash, blockNumber: bigint) {
@@ -195,10 +187,7 @@ export class BaseEngine {
       throw new Error("Multiple MessageInitiated events found (unsupported)");
     }
 
-    const event = msgInitEvents[0];
-    if (!event) {
-      throw new Error("No MessageInitiated event found in transaction");
-    }
+    const event = msgInitEvents[0]!;
 
     const rawProof = await this.publicClient.readContract({
       address: this.config.base.bridgeContract,
@@ -220,7 +209,9 @@ export class BaseEngine {
       options.pollIntervalMs ?? DEFAULT_MONITOR_POLL_INTERVAL_MS;
     const startTime = Date.now();
 
-    const { outerHash } = this.buildEvmMessage(outgoingMessageAccount);
+    const { outerHash } = buildEvmIncomingMessage(outgoingMessageAccount, {
+      gasLimit: DEFAULT_EVM_GAS_LIMIT,
+    });
 
     while (Date.now() - startTime <= timeoutMs) {
       const isSuccessful = await this.publicClient.readContract({
@@ -248,18 +239,11 @@ export class BaseEngine {
       pollIntervalMs?: number;
     } = {},
   ): Promise<Hash> {
-    if (!this.walletClient || !this.config.base.privateKey) {
-      throw new Error(
-        "Base wallet client not initialized (missing privateKey)",
-      );
-    }
+    const { walletClient, account } = this.requireWallet();
 
-    const account = privateKeyToAccount(this.config.base.privateKey);
-
-    // Compute inner message hash as Base contracts do
-    const { outerHash, evmMessage } = this.buildEvmMessage(
+    const { outerHash, evmMessage } = buildEvmIncomingMessage(
       outgoingMessageAccount,
-      options.gasLimit,
+      { gasLimit: options.gasLimit ?? DEFAULT_EVM_GAS_LIMIT },
     );
 
     // Batch all on-chain reads into a single multicall for performance
@@ -301,7 +285,9 @@ export class BaseEngine {
     }
 
     // Assert Bridge.getMessageHash(message) equals expected hash
-    if (this.sanitizeHex(messageHashResult) !== this.sanitizeHex(outerHash)) {
+    if (
+      (messageHashResult as string).toLowerCase() !== outerHash.toLowerCase()
+    ) {
       throw new Error(
         `Hash mismatch: getMessageHash != expected. got=${messageHashResult}, expected=${outerHash}`,
       );
@@ -315,11 +301,11 @@ export class BaseEngine {
     );
 
     // Execute the message on Base
-    const tx = await this.walletClient.writeContract({
+    const tx = await walletClient.writeContract({
       address: this.config.base.bridgeContract,
       abi: BRIDGE_ABI,
       functionName: "relayMessages",
-      args: [[evmMessage]],
+      args: [[{ ...evmMessage }]],
       account,
       chain: this.config.base.chain,
     });
@@ -364,174 +350,11 @@ export class BaseEngine {
 
   private formatIxs(ixs: Ix[]) {
     return ixs.map((ix) => ({
-      programId: this.bytes32FromPubkey(ix.programId),
+      programId: bytes32FromSolanaPubkey(ix.programId),
       serializedAccounts: ix.accounts.map((acc) =>
         toHex(new Uint8Array(getIxAccountEncoder().encode(acc))),
       ),
       data: toHex(new Uint8Array(ix.data)),
     }));
-  }
-
-  buildEvmMessage(
-    outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
-    gasLimit: bigint = DEFAULT_EVM_GAS_LIMIT,
-  ) {
-    const nonce = BigInt(outgoing.data.nonce);
-    const senderBytes32 = this.bytes32FromPubkey(outgoing.data.sender);
-    const { ty, data } = this.buildIncomingPayload(outgoing);
-
-    const innerHash = keccak256(
-      encodeAbiParameters(
-        [{ type: "bytes32" }, { type: "uint8" }, { type: "bytes" }],
-        [senderBytes32, ty, data],
-      ),
-    );
-
-    const pubkey = getBase58Codec().encode(outgoing.address);
-
-    const outerHash = keccak256(
-      encodeAbiParameters(
-        [{ type: "uint64" }, { type: "bytes32" }, { type: "bytes32" }],
-        [nonce, `0x${pubkey.toHex()}`, innerHash],
-      ),
-    );
-
-    const evmMessage = {
-      outgoingMessagePubkey: this.bytes32FromPubkey(outgoing.address),
-      gasLimit,
-      nonce,
-      sender: senderBytes32,
-      ty,
-      data,
-    };
-
-    return { innerHash, outerHash, evmMessage };
-  }
-
-  private bytes32FromPubkey(pubkey: Address): Hex {
-    const bytes = getBase58Encoder().encode(pubkey);
-    let hex = toHex(new Uint8Array(bytes));
-    if (hex.length !== 66) hex = padHex(hex, { size: 32 });
-    return hex;
-  }
-
-  private buildIncomingPayload(
-    outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
-  ) {
-    const msg = outgoing.data.message;
-
-    // Call
-    if (msg.__kind === "Call") {
-      const call = msg.fields[0];
-      const ty = MessageType.Call;
-      const data = this.encodeCallData(call);
-      return { ty, data };
-    }
-
-    // Transfer (with optional call)
-    if (msg.__kind === "Transfer") {
-      const transfer = msg.fields[0];
-
-      const transferTuple = {
-        localToken: toHex(new Uint8Array(transfer.remoteToken)),
-        remoteToken: this.bytes32FromPubkey(transfer.localToken),
-        to: padHex(toHex(new Uint8Array(transfer.to)), {
-          size: 32,
-          dir: "right",
-        }),
-        remoteAmount: BigInt(transfer.amount),
-      } as const;
-
-      const encodedTransfer = encodeAbiParameters(
-        [
-          {
-            type: "tuple",
-            components: [
-              { name: "localToken", type: "address" },
-              { name: "remoteToken", type: "bytes32" },
-              { name: "to", type: "bytes32" },
-              { name: "remoteAmount", type: "uint64" },
-            ],
-          },
-        ],
-        [transferTuple],
-      );
-
-      if (transfer.call.__option === "None") {
-        const ty = MessageType.Transfer;
-        return { ty, data: encodedTransfer, transferTuple };
-      }
-
-      const ty = MessageType.TransferAndCall;
-      const call = transfer.call.value;
-      const callTuple = this.callTupleObject(call);
-      const data = encodeAbiParameters(
-        [
-          {
-            type: "tuple",
-            components: [
-              { name: "localToken", type: "address" },
-              { name: "remoteToken", type: "bytes32" },
-              { name: "to", type: "bytes32" },
-              { name: "remoteAmount", type: "uint64" },
-            ],
-          },
-          {
-            type: "tuple",
-            components: [
-              { name: "ty", type: "uint8" },
-              { name: "to", type: "address" },
-              { name: "value", type: "uint128" },
-              { name: "data", type: "bytes" },
-            ],
-          },
-        ],
-        [transferTuple, callTuple],
-      );
-
-      return { ty, data, transferTuple, callTuple };
-    }
-
-    throw new Error("Unsupported outgoing message type");
-  }
-
-  private encodeCallData(call: Call): Hex {
-    const evmTo = toHex(new Uint8Array(call.to));
-
-    return encodeAbiParameters(
-      [
-        {
-          type: "tuple",
-          components: [
-            { name: "ty", type: "uint8" },
-            { name: "to", type: "address" },
-            { name: "value", type: "uint128" },
-            { name: "data", type: "bytes" },
-          ],
-        },
-      ],
-      [
-        {
-          ty: Number(call.ty),
-          to: evmTo,
-          value: BigInt(call.value),
-          data: toHex(new Uint8Array(call.data)),
-        },
-      ],
-    );
-  }
-
-  private callTupleObject(call: Call) {
-    const evmTo = toHex(new Uint8Array(call.to));
-    return {
-      ty: Number(call.ty),
-      to: evmTo,
-      value: BigInt(call.value),
-      data: toHex(new Uint8Array(call.data)),
-    };
-  }
-
-  private sanitizeHex(h: string): string {
-    return h.toLowerCase();
   }
 }

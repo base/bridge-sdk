@@ -33,12 +33,6 @@ export interface EngineConfig {
   base: BaseConfig;
 }
 
-export const MessageType = {
-  Call: 0,
-  Transfer: 1,
-  TransferAndCall: 2,
-} as const;
-
 export type MessageCall = Extract<
   BridgeBaseToSolanaStateIncomingMessageMessage,
   { __kind: "Call" }

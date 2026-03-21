@@ -137,16 +137,29 @@ export interface WrapTokenOpts {
 
 export class SolanaEngine {
   private readonly config: EngineConfig;
+  private readonly rpc: Rpc;
+  private readonly sendAndConfirmTx: ReturnType<
+    typeof sendAndConfirmTransactionFactory
+  >;
 
   constructor(opts: SolanaEngineOpts) {
     this.config = opts.config;
+    this.rpc = createSolanaRpc(this.config.solana.rpcUrl);
+
+    const url = new URL(this.config.solana.rpcUrl);
+    const wssUrl = `wss://${url.host}${url.pathname}${url.search}`;
+    const rpcSubscriptions = createSolanaRpcSubscriptions(wssUrl);
+    this.sendAndConfirmTx = sendAndConfirmTransactionFactory({
+      rpc: this.rpc,
+      rpcSubscriptions,
+    });
   }
 
   async getOutgoingMessage(
     pubkey: SolAddress,
     options: { timeoutMs?: number; pollIntervalMs?: number } = {},
   ): Promise<Account<OutgoingMessage, string>> {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
     const timeoutMs = options.timeoutMs ?? DEFAULT_MONITOR_TIMEOUT_MS;
     const pollIntervalMs =
       options.pollIntervalMs ?? DEFAULT_MONITOR_POLL_INTERVAL_MS;
@@ -180,7 +193,7 @@ export class SolanaEngine {
       gasCostScalerDp: bigint;
     };
   }> {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
 
     const [bridgeAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.bridgeProgram,
@@ -230,7 +243,7 @@ export class SolanaEngine {
       return 0n;
     }
 
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
 
     // Get a recent blockhash for the transaction
     const { value: latestBlockhash } = await rpc
@@ -498,7 +511,7 @@ export class SolanaEngine {
   }
 
   async getLatestBaseBlockNumber(): Promise<bigint> {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
 
     const [bridgeAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.bridgeProgram,
@@ -522,30 +535,31 @@ export class SolanaEngine {
     rawProof: readonly `0x${string}`[],
     blockNumber: bigint,
   ): Promise<{ signature?: Signature; messageHash: Hash }> {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
 
     const payer = this.config.solana.payer;
 
-    const [bridgeAddress] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
-      seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
-    });
-
-    const [outputRootAddress] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
-      seeds: [
-        Buffer.from(getIdlConstant("OUTPUT_ROOT_SEED")),
-        getU64Encoder({ endian: Endian.Little }).encode(blockNumber),
-      ],
-    });
-
-    const [messageAddress] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
-      seeds: [
-        Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),
-        toBytes(event.messageHash),
-      ],
-    });
+    const [[bridgeAddress], [outputRootAddress], [messageAddress]] =
+      await Promise.all([
+        getProgramDerivedAddress({
+          programAddress: this.config.solana.bridgeProgram,
+          seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
+        }),
+        getProgramDerivedAddress({
+          programAddress: this.config.solana.bridgeProgram,
+          seeds: [
+            Buffer.from(getIdlConstant("OUTPUT_ROOT_SEED")),
+            getU64Encoder({ endian: Endian.Little }).encode(blockNumber),
+          ],
+        }),
+        getProgramDerivedAddress({
+          programAddress: this.config.solana.bridgeProgram,
+          seeds: [
+            Buffer.from(getIdlConstant("INCOMING_MESSAGE_SEED")),
+            toBytes(event.messageHash),
+          ],
+        }),
+      ]);
 
     const maybeMessage = await fetchMaybeIncomingMessage(rpc, messageAddress);
     if (maybeMessage.exists) {
@@ -574,7 +588,7 @@ export class SolanaEngine {
   }
 
   async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
 
     const payer = this.config.solana.payer;
 
@@ -820,7 +834,7 @@ export class SolanaEngine {
   }
 
   private async setupMessage(idempotencyKey?: string) {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
     const payer = this.config.solana.payer;
 
     const [bridgeAccountAddress] = await getProgramDerivedAddress({
@@ -839,7 +853,7 @@ export class SolanaEngine {
     opts: { mint: string; amount: bigint },
     payer: KeyPairSigner,
   ) {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
 
     const mint = address(opts.mint);
     const maybeMint = await fetchMaybeMint(rpc, mint);
@@ -910,18 +924,7 @@ export class SolanaEngine {
     instructions: Instruction[],
     payer: TransactionSigner,
   ) {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
-
-    const url = new URL(this.config.solana.rpcUrl);
-    const wssUrl = `wss://${url.host}${url.pathname}${url.search}`;
-    const rpcSubscriptions = createSolanaRpcSubscriptions(wssUrl);
-
-    const sendAndConfirmTx = sendAndConfirmTransactionFactory({
-      rpc,
-      rpcSubscriptions,
-    });
-
-    const blockhash = await rpc.getLatestBlockhash().send();
+    const blockhash = await this.rpc.getLatestBlockhash().send();
 
     const transactionMessage = pipe(
       createTransactionMessage({ version: 0 }),
@@ -938,7 +941,7 @@ export class SolanaEngine {
     assertIsSendableTransaction(signedTransaction);
     assertIsTransactionWithBlockhashLifetime(signedTransaction);
 
-    await sendAndConfirmTx(signedTransaction, {
+    await this.sendAndConfirmTx(signedTransaction, {
       commitment: "confirmed",
     });
 
@@ -950,7 +953,7 @@ export class SolanaEngine {
     payer: KeyPairSigner<string>,
     gasLimit?: bigint,
   ) {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
 
     const [cfgAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.relayerProgram,
@@ -995,7 +998,7 @@ export class SolanaEngine {
     payerAddress: SolAddress,
     mint: Account<Mint>,
   ) {
-    const rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    const rpc = this.rpc;
 
     if (from !== "payer") {
       const customAddress = address(from);
