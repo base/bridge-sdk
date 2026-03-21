@@ -1,4 +1,4 @@
-import { type Address as SolAddress, address as solAddress } from "@solana/kit";
+import { address as solAddress } from "@solana/kit";
 import type { ChainId } from "../types";
 import { BASE_MAINNET_CHAIN_ID, type BridgeConfig } from "./router";
 
@@ -41,7 +41,7 @@ function mergeRecords<T extends Record<string, unknown>>(
         if (value != null) merged[key] = value;
       }
       out[chainId] = merged as T;
-    } else if (Object.values(dep).every((v) => v != null)) {
+    } else if (Object.values(dep).every(Boolean)) {
       out[chainId] = dep as T;
     }
   }
