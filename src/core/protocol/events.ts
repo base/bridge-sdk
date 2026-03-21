@@ -23,7 +23,7 @@ export function decodeMessageInitiatedEvents(
           topics: log.topics,
         });
         if (decoded.eventName !== "MessageInitiated") return null;
-        return decoded.args as unknown as MessageInitiatedEvent;
+        return decoded.args;
       } catch {
         return null;
       }

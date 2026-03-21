@@ -37,12 +37,12 @@ import type {
   StatusOptions,
 } from "../../types";
 import { isSolanaDestinationCall } from "../../utils";
-import { decodeMessageInitiatedEvents } from "../events";
-import { deriveIncomingMessagePda } from "../pda";
 import { BaseEngine } from "../engines/base-engine";
 import { SOLANA_BASE_TX_FEE } from "../engines/constants";
 import { SolanaEngine } from "../engines/solana-engine";
 import type { EngineConfig } from "../engines/types";
+import { decodeMessageInitiatedEvents } from "../events";
+import { deriveIncomingMessagePda } from "../pda";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gas estimation constants for Base -> SVM quotes
@@ -593,16 +593,15 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const receipt = await this.evm.publicClient.getTransactionReceipt({
       hash: txHash,
     });
-    const events = decodeMessageInitiatedEvents(receipt.logs);
+    const [e, ...rest] = decodeMessageInitiatedEvents(receipt.logs);
 
-    if (events.length !== 1) {
+    if (!e || rest.length > 0) {
       throw new BridgeProofNotAvailableError(
-        `Expected exactly 1 MessageInitiated event in tx receipt; found ${events.length}`,
+        `Expected exactly 1 MessageInitiated event in tx receipt; found ${e ? rest.length + 1 : 0}`,
         { route: this.route, chain: this.route.sourceChain },
       );
     }
 
-    const e = events[0]!;
     return {
       messageHash: e.messageHash as Hex,
       mmrRoot: e.mmrRoot as Hex,

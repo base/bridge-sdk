@@ -62,10 +62,7 @@ import {
 import { getIdlConstant } from "../../../utils/bridge-idl.constants";
 import { getRelayerIdlConstant } from "../../../utils/relayer-idl.constants";
 import { sleep } from "../../../utils/time";
-import {
-  BridgeAlreadyExecutedError,
-  BridgeNotProvenError,
-} from "../../errors";
+import { BridgeAlreadyExecutedError, BridgeNotProvenError } from "../../errors";
 import { deriveIncomingMessagePda } from "../pda";
 import {
   DEFAULT_MONITOR_POLL_INTERVAL_MS,

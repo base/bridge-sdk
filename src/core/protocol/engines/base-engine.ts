@@ -16,11 +16,11 @@ import {
   type OutgoingMessage,
 } from "../../../clients/ts/src/bridge";
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
-import { decodeMessageInitiatedEvents } from "../events";
 import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
 import { type Logger, NOOP_LOGGER } from "../../../utils/logger";
 import { sleep } from "../../../utils/time";
 import { buildEvmIncomingMessage, bytes32FromSolanaPubkey } from "../encoding";
+import { decodeMessageInitiatedEvents } from "../events";
 import {
   DEFAULT_EVM_GAS_LIMIT,
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
