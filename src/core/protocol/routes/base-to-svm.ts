@@ -425,7 +425,6 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     };
 
     return {
-      route: req.route,
       request: req,
       messageRef,
       initiationTx: txHash,

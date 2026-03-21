@@ -22,7 +22,7 @@ import type {
   ProveResult,
   Quote,
   QuoteRequest,
-  ResolvedRoute,
+  RelayOptions,
   RouteAdapter,
   RouteCapabilities,
   StatusOptions,
@@ -51,12 +51,7 @@ export interface BridgeClientConfig {
   /** Optional default behavior for monitoring/retries/logging. */
   defaults?: {
     monitor?: MonitorOptions;
-    relay?: {
-      mode?: "auto" | "manual" | "none";
-      gasLimit?: bigint;
-      maxFeePerGas?: bigint;
-      maxPriorityFeePerGas?: bigint;
-    };
+    relay?: RelayOptions;
   };
 
   logger?: Logger;
@@ -83,7 +78,7 @@ export interface BridgeClient {
   ): AsyncIterable<ExecutionStatus>;
 
   /** Discovery */
-  resolveRoute(route: BridgeRoute): Promise<ResolvedRoute>;
+  resolveRoute(route: BridgeRoute): Promise<BridgeRoute>;
   capabilities(route: BridgeRoute): Promise<RouteCapabilities>;
 }
 
@@ -202,10 +197,10 @@ class DefaultBridgeClient implements BridgeClient {
     yield* adapter.monitor(ref, merged);
   }
 
-  async resolveRoute(route: BridgeRoute): Promise<ResolvedRoute> {
+  async resolveRoute(route: BridgeRoute): Promise<BridgeRoute> {
     if (!supportsBridgeRoute(route))
       throw new BridgeUnsupportedRouteError(route);
-    return { route };
+    return route;
   }
 
   async capabilities(route: BridgeRoute): Promise<RouteCapabilities> {

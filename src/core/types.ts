@@ -160,7 +160,6 @@ export interface BridgeRequest {
 }
 
 export interface BridgeOperation {
-  route: BridgeRoute;
   request: BridgeRequest;
   messageRef: MessageRef;
   /**
@@ -223,10 +222,6 @@ export interface Quote {
   };
   /** Warnings about the quote (e.g., high fees, low liquidity) */
   warnings?: string[];
-}
-
-export interface ResolvedRoute {
-  route: BridgeRoute;
 }
 
 export interface ProveOptions {

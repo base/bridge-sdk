@@ -410,7 +410,6 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       gasLimit: args.gasLimit,
     });
     return {
-      route: args.req.route,
       request: args.req,
       messageRef,
       initiationTx: args.signature,
