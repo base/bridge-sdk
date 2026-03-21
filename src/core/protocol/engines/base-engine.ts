@@ -20,8 +20,7 @@ import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
 import { type Logger, NOOP_LOGGER } from "../../../utils/logger";
 import { sleep } from "../../../utils/time";
-import { bytes32FromSolanaPubkey } from "../encoding";
-import { buildEvmIncomingMessage } from "../identity";
+import { buildEvmIncomingMessage, bytes32FromSolanaPubkey } from "../encoding";
 import {
   DEFAULT_EVM_GAS_LIMIT,
   DEFAULT_MONITOR_POLL_INTERVAL_MS,

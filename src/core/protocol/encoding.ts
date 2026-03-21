@@ -3,12 +3,13 @@ import {
   getBase58Encoder,
   type Address as SolAddress,
 } from "@solana/kit";
-import { encodeAbiParameters, type Hex, padHex, toHex } from "viem";
+import { encodeAbiParameters, type Hex, keccak256, padHex, toHex } from "viem";
 import type {
   BridgeSolanaToBaseStateOutgoingMessageMessage,
   Call,
   fetchOutgoingMessage,
 } from "../../clients/ts/src/bridge";
+import type { EvmIncomingMessage } from "./engines/types";
 
 export const MESSAGE_TYPE = {
   Call: 0,
@@ -142,4 +143,54 @@ export function outgoingMessagePubkeyBytes32(
 ): Hex {
   const pubkeyBase58 = getBase58Codec().encode(outgoing.address);
   return `0x${pubkeyBase58.toHex()}` as Hex;
+}
+
+const INNER_HASH_ABI = [
+  { type: "bytes32" },
+  { type: "uint8" },
+  { type: "bytes" },
+] as const;
+
+const OUTER_HASH_ABI = [
+  { type: "uint64" },
+  { type: "bytes32" },
+  { type: "bytes32" },
+] as const;
+
+/**
+ * Pure derivation helper for Solana->EVM message identity + payload.
+ */
+export function buildEvmIncomingMessage(
+  outgoing: Awaited<ReturnType<typeof fetchOutgoingMessage>>,
+  args: { gasLimit: bigint },
+): {
+  innerHash: Hex;
+  outerHash: Hex;
+  evmMessage: EvmIncomingMessage;
+} {
+  const nonce = outgoing.data.nonce;
+  const sender = bytes32FromSolanaPubkey(outgoing.data.sender);
+  const { ty, data } = encodeOutgoingMessagePayload(outgoing.data.message);
+  const outgoingMessagePubkey = outgoingMessagePubkeyBytes32(outgoing);
+
+  const innerHash = keccak256(
+    encodeAbiParameters(INNER_HASH_ABI, [sender, ty, data]),
+  );
+
+  const outerHash = keccak256(
+    encodeAbiParameters(OUTER_HASH_ABI, [nonce, outgoingMessagePubkey, innerHash]),
+  );
+
+  return {
+    innerHash,
+    outerHash,
+    evmMessage: {
+      outgoingMessagePubkey,
+      gasLimit: args.gasLimit,
+      nonce,
+      sender,
+      ty,
+      data,
+    },
+  };
 }

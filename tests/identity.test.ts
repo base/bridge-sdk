@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { type Account, address as solAddress } from "@solana/kit";
 import type { OutgoingMessage } from "../src/clients/ts/src/bridge";
 import { CallType } from "../src/clients/ts/src/bridge";
-import { buildEvmIncomingMessage } from "../src/core/protocol/identity";
+import { buildEvmIncomingMessage } from "../src/core/protocol/encoding";
 
 test("buildEvmIncomingMessage produces correct hashes and message", () => {
   const outgoing: Account<OutgoingMessage, string> = {

@@ -36,7 +36,7 @@ import {
 } from "../engines/constants";
 import { SolanaEngine } from "../engines/solana-engine";
 import type { EngineConfig } from "../engines/types";
-import { buildEvmIncomingMessage } from "../identity";
+import { buildEvmIncomingMessage } from "../encoding";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fee estimation constants for SVM -> Base quotes
