@@ -1,7 +1,4 @@
-import {
-  getBase58Encoder,
-  type Address as SolAddress,
-} from "@solana/kit";
+import { getBase58Encoder, type Address as SolAddress } from "@solana/kit";
 import { encodeAbiParameters, type Hex, keccak256, padHex, toHex } from "viem";
 import type {
   BridgeSolanaToBaseStateOutgoingMessageMessage,
@@ -71,10 +68,7 @@ export function encodeOutgoingMessagePayload(
     } as const;
 
     if (transfer.call.__option === "None") {
-      const data = encodeAbiParameters(
-        [TRANSFER_TUPLE_ABI],
-        [transferTuple],
-      );
+      const data = encodeAbiParameters([TRANSFER_TUPLE_ABI], [transferTuple]);
       return { ty: MESSAGE_TYPE.Transfer, data };
     }
 
