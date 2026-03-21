@@ -4,6 +4,7 @@ import { mergeBridgeDeployments } from "./protocol/deployments";
 import {
   type BridgeConfig,
   resolveBridgeRoute,
+  routeMapKey,
   supportsBridgeRoute,
 } from "./protocol/router";
 import type {
@@ -82,22 +83,13 @@ export interface BridgeClient {
   capabilities(route: BridgeRoute): Promise<RouteCapabilities>;
 }
 
-type RouteAdapterKey = string;
-
-function routeKey(route: BridgeRoute): RouteAdapterKey {
-  return `${route.sourceChain}->${route.destinationChain}`;
-}
-
 class DefaultBridgeClient implements BridgeClient {
   private readonly chains: Record<ChainId, ChainAdapter>;
   private readonly bridge: BridgeConfig;
   private readonly logger: Logger;
   private readonly defaults: BridgeClientConfig["defaults"];
 
-  private readonly adapterCache = new Map<
-    RouteAdapterKey,
-    Promise<RouteAdapter>
-  >();
+  private readonly adapterCache = new Map<string, Promise<RouteAdapter>>();
 
   constructor(config: BridgeClientConfig & { bridge: BridgeConfig }) {
     this.chains = config.chains;
@@ -209,9 +201,7 @@ class DefaultBridgeClient implements BridgeClient {
   }
 
   private getRouteAdapter(route: BridgeRoute): Promise<RouteAdapter> {
-    if (!supportsBridgeRoute(route))
-      throw new BridgeUnsupportedRouteError(route);
-    const key = routeKey(route);
+    const key = routeMapKey(route);
 
     const existing = this.adapterCache.get(key);
     if (existing) {

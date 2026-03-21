@@ -51,7 +51,7 @@ export interface BridgeConfig {
   tokenMappings?: Record<string, Record<string, string>>;
 }
 
-function routeMapKey(route: BridgeRoute): string {
+export function routeMapKey(route: BridgeRoute): string {
   return `${route.sourceChain}->${route.destinationChain}`;
 }
 
