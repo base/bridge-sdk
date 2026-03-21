@@ -143,6 +143,7 @@ export class SolanaEngine {
   private readonly sendAndConfirmTx: ReturnType<
     typeof sendAndConfirmTransactionFactory
   >;
+  private bridgePdaPromise: Promise<SolAddress> | undefined;
 
   constructor(opts: SolanaEngineOpts) {
     this.config = opts.config;
@@ -158,25 +159,34 @@ export class SolanaEngine {
     });
   }
 
+  private getBridgePda(): Promise<SolAddress> {
+    if (!this.bridgePdaPromise) {
+      this.bridgePdaPromise = getProgramDerivedAddress({
+        programAddress: this.config.solana.bridgeProgram,
+        seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
+      }).then(([addr]) => addr);
+    }
+    return this.bridgePdaPromise;
+  }
+
   async getOutgoingMessage(
     pubkey: SolAddress,
     options: { timeoutMs?: number; pollIntervalMs?: number } = {},
   ): Promise<Account<OutgoingMessage, string>> {
-    const rpc = this.rpc;
     const timeoutMs = options.timeoutMs ?? DEFAULT_MONITOR_TIMEOUT_MS;
     const pollIntervalMs =
       options.pollIntervalMs ?? DEFAULT_MONITOR_POLL_INTERVAL_MS;
     const startTime = Date.now();
 
     while (Date.now() - startTime <= timeoutMs) {
-      const maybeAccount = await fetchMaybeOutgoingMessage(rpc, pubkey);
+      const maybeAccount = await fetchMaybeOutgoingMessage(this.rpc, pubkey);
       if (maybeAccount.exists) {
         return maybeAccount as Account<OutgoingMessage, string>;
       }
       await sleep(pollIntervalMs);
     }
 
-    return await fetchOutgoingMessage(rpc, pubkey);
+    return await fetchOutgoingMessage(this.rpc, pubkey);
   }
 
   /**
@@ -196,12 +206,7 @@ export class SolanaEngine {
       gasCostScalerDp: bigint;
     };
   }> {
-    const rpc = this.rpc;
-
-    const [bridgeAddress] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
-      seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
-    });
+    const bridgeAddress = await this.getBridgePda();
 
     const [cfgAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.relayerProgram,
@@ -209,8 +214,8 @@ export class SolanaEngine {
     });
 
     const [bridge, cfg] = await Promise.all([
-      fetchBridge(rpc, bridgeAddress),
-      fetchCfg(rpc, cfgAddress),
+      fetchBridge(this.rpc, bridgeAddress),
+      fetchCfg(this.rpc, cfgAddress),
     ]);
 
     return {
@@ -246,10 +251,8 @@ export class SolanaEngine {
       return 0n;
     }
 
-    const rpc = this.rpc;
-
     // Get a recent blockhash for the transaction
-    const { value: latestBlockhash } = await rpc
+    const { value: latestBlockhash } = await this.rpc
       .getLatestBlockhash({ commitment: "confirmed" })
       .send();
 
@@ -274,7 +277,7 @@ export class SolanaEngine {
 
     try {
       // Simulate with replaceRecentBlockhash to avoid signature verification
-      const result = await rpc
+      const result = await this.rpc
         .simulateTransaction(base64Tx, {
           encoding: "base64",
           replaceRecentBlockhash: true,
@@ -413,10 +416,6 @@ export class SolanaEngine {
       opts.payForRelay,
       opts.gasLimit,
       async ({ payer, bridge, outgoingMessage, salt }) => {
-        const callData = opts.data.startsWith("0x")
-          ? opts.data.slice(2)
-          : opts.data;
-
         return [
           getBridgeCallInstruction(
             {
@@ -428,12 +427,7 @@ export class SolanaEngine {
               systemProgram: SYSTEM_PROGRAM_ADDRESS,
 
               outgoingMessageSalt: salt,
-              call: {
-                ty: opts.ty ?? CallType.Call,
-                to: toBytes(opts.to),
-                value: opts.value,
-                data: Buffer.from(callData, "hex"),
-              },
+              call: this.formatCall(opts)!,
             },
             { programAddress: this.config.solana.bridgeProgram },
           ),
@@ -514,14 +508,9 @@ export class SolanaEngine {
   }
 
   async getLatestBaseBlockNumber(): Promise<bigint> {
-    const rpc = this.rpc;
+    const bridgeAddress = await this.getBridgePda();
 
-    const [bridgeAddress] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
-      seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
-    });
-
-    const bridge = await fetchBridge(rpc, bridgeAddress);
+    const bridge = await fetchBridge(this.rpc, bridgeAddress);
     return bridge.data.baseBlockNumber;
   }
 
@@ -538,16 +527,11 @@ export class SolanaEngine {
     rawProof: readonly `0x${string}`[],
     blockNumber: bigint,
   ): Promise<{ signature?: Signature; messageHash: Hash }> {
-    const rpc = this.rpc;
-
     const payer = this.config.solana.payer;
 
-    const [[bridgeAddress], [outputRootAddress], messageAddress] =
+    const [bridgeAddress, [outputRootAddress], messageAddress] =
       await Promise.all([
-        getProgramDerivedAddress({
-          programAddress: this.config.solana.bridgeProgram,
-          seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
-        }),
+        this.getBridgePda(),
         getProgramDerivedAddress({
           programAddress: this.config.solana.bridgeProgram,
           seeds: [
@@ -561,7 +545,7 @@ export class SolanaEngine {
         ),
       ]);
 
-    const maybeMessage = await fetchMaybeIncomingMessage(rpc, messageAddress);
+    const maybeMessage = await fetchMaybeIncomingMessage(this.rpc, messageAddress);
     if (maybeMessage.exists) {
       return { messageHash: event.messageHash };
     }
@@ -588,8 +572,6 @@ export class SolanaEngine {
   }
 
   async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
-    const rpc = this.rpc;
-
     const payer = this.config.solana.payer;
 
     const messagePda = await deriveIncomingMessagePda(
@@ -598,7 +580,7 @@ export class SolanaEngine {
     );
 
     const maybeIncomingMessage = await fetchMaybeIncomingMessage(
-      rpc,
+      this.rpc,
       messagePda,
     );
     if (!maybeIncomingMessage.exists) {
@@ -630,7 +612,7 @@ export class SolanaEngine {
       message.__kind === "Call"
         ? this.messageCallAccounts(message)
         : await this.messageTransferAccounts(
-            rpc,
+            this.rpc,
             message,
             this.config.solana.bridgeProgram,
           );
@@ -648,10 +630,7 @@ export class SolanaEngine {
       return acct;
     });
 
-    const [bridgeAccountAddress] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
-      seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
-    });
+    const bridgeAccountAddress = await this.getBridgePda();
 
     const relayMessageIx = getRelayMessageInstruction(
       { message: messagePda, bridge: bridgeAccountAddress },
@@ -835,15 +814,11 @@ export class SolanaEngine {
   }
 
   private async setupMessage(idempotencyKey?: string) {
-    const rpc = this.rpc;
     const payer = this.config.solana.payer;
 
-    const [bridgeAccountAddress] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
-      seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
-    });
+    const bridgeAccountAddress = await this.getBridgePda();
 
-    const bridge = await fetchBridge(rpc, bridgeAccountAddress);
+    const bridge = await fetchBridge(this.rpc, bridgeAccountAddress);
 
     const { salt, pubkey: outgoingMessage } =
       await this.outgoingMessagePubkey(idempotencyKey);
@@ -854,10 +829,8 @@ export class SolanaEngine {
     opts: { mint: string; amount: bigint },
     payer: KeyPairSigner,
   ) {
-    const rpc = this.rpc;
-
     const mint = address(opts.mint);
-    const maybeMint = await fetchMaybeMint(rpc, mint);
+    const maybeMint = await fetchMaybeMint(this.rpc, mint);
     if (!maybeMint.exists) {
       throw new Error("Mint not found");
     }
@@ -954,14 +927,12 @@ export class SolanaEngine {
     payer: KeyPairSigner<string>,
     gasLimit?: bigint,
   ) {
-    const rpc = this.rpc;
-
     const [cfgAddress] = await getProgramDerivedAddress({
       programAddress: this.config.solana.relayerProgram,
       seeds: [Buffer.from(getRelayerIdlConstant("CFG_SEED"))],
     });
 
-    const cfg = await fetchCfg(rpc, cfgAddress);
+    const cfg = await fetchCfg(this.rpc, cfgAddress);
 
     const { salt, pubkey: messageToRelay } = await this.mtrPubkey(
       this.config.solana.relayerProgram,
@@ -999,11 +970,9 @@ export class SolanaEngine {
     payerAddress: SolAddress,
     mint: Account<Mint>,
   ) {
-    const rpc = this.rpc;
-
     if (from !== "payer") {
       const customAddress = address(from);
-      const maybeToken = await fetchMaybeToken(rpc, customAddress);
+      const maybeToken = await fetchMaybeToken(this.rpc, customAddress);
       if (!maybeToken.exists) {
         throw new Error("Token account does not exist");
       }
@@ -1020,7 +989,7 @@ export class SolanaEngine {
       { programAddress: ASSOCIATED_TOKEN_PROGRAM_ADDRESS },
     );
 
-    const maybeAta = await fetchMaybeToken(rpc, ataAddress);
+    const maybeAta = await fetchMaybeToken(this.rpc, ataAddress);
     if (!maybeAta.exists) {
       throw new Error("ATA does not exist");
     }

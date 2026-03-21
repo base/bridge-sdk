@@ -17,7 +17,6 @@ import {
 } from "../../../clients/ts/src/bridge";
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
-import { type Logger, NOOP_LOGGER } from "../../../utils/logger";
 import { sleep } from "../../../utils/time";
 import { buildEvmIncomingMessage, bytes32FromSolanaPubkey } from "../encoding";
 import { decodeMessageInitiatedEvents } from "../events";
@@ -30,7 +29,6 @@ import type { CallParams, EngineConfig } from "./types";
 
 export interface BaseEngineOpts {
   config: EngineConfig;
-  logger?: Logger;
 }
 
 export interface BaseBridgeCallOpts {
@@ -49,14 +47,13 @@ export interface BaseBridgeTokenOpts {
 
 export class BaseEngine {
   private readonly config: EngineConfig;
-  private readonly logger: Logger;
   private readonly publicClient: PublicClient;
   private readonly walletClient: WalletClient | undefined;
+  private readonly account: ReturnType<typeof privateKeyToAccount> | undefined;
   private validatorAddressPromise: Promise<Hex> | undefined;
 
   constructor(opts: BaseEngineOpts) {
     this.config = opts.config;
-    this.logger = opts.logger ?? NOOP_LOGGER;
     this.publicClient = createPublicClient({
       chain: this.config.base.chain,
       transport: http(this.config.base.rpcUrl),
@@ -67,6 +64,7 @@ export class BaseEngine {
         chain: this.config.base.chain,
         transport: http(this.config.base.rpcUrl),
       });
+      this.account = privateKeyToAccount(this.config.base.privateKey);
     }
   }
 
@@ -82,14 +80,14 @@ export class BaseEngine {
   }
 
   private requireWallet() {
-    if (!this.walletClient || !this.config.base.privateKey) {
+    if (!this.walletClient || !this.account) {
       throw new Error(
         "Base wallet client not initialized (missing privateKey)",
       );
     }
     return {
       walletClient: this.walletClient,
-      account: privateKeyToAccount(this.config.base.privateKey),
+      account: this.account,
     };
   }
 
@@ -169,10 +167,7 @@ export class BaseEngine {
       throw new Error("Multiple MessageInitiated events found (unsupported)");
     }
 
-    const event = msgInitEvents[0];
-    if (!event) {
-      throw new Error("No MessageInitiated event found");
-    }
+    const event = msgInitEvents[0]!;
 
     const rawProof = await this.publicClient.readContract({
       address: this.config.base.bridgeContract,
