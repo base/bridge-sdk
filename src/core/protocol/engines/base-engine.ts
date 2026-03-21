@@ -160,14 +160,18 @@ export class BaseEngine {
     // Extract and decode MessageInitiated events
     const msgInitEvents = decodeMessageInitiatedEvents(txReceipt.logs);
 
-    if (msgInitEvents.length === 0) {
-      throw new Error("No MessageInitiated event found in transaction");
-    }
-    if (msgInitEvents.length > 1) {
-      throw new Error("Multiple MessageInitiated events found (unsupported)");
+    if (msgInitEvents.length !== 1) {
+      throw new Error(
+        msgInitEvents.length === 0
+          ? "No MessageInitiated event found in transaction"
+          : "Multiple MessageInitiated events found (unsupported)",
+      );
     }
 
-    const event = msgInitEvents[0]!;
+    const [event] = msgInitEvents as [
+      (typeof msgInitEvents)[number],
+      ...unknown[],
+    ];
 
     const rawProof = await this.publicClient.readContract({
       address: this.config.base.bridgeContract,

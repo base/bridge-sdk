@@ -121,6 +121,13 @@ export interface BridgeWrappedOpts {
   idempotencyKey?: string;
 }
 
+interface FormattedCall {
+  ty: CallType;
+  to: Uint8Array;
+  value: bigint;
+  data: Buffer;
+}
+
 export interface BridgeCallOpts extends CallParams {
   payForRelay?: boolean;
   gasLimit?: bigint;
@@ -427,7 +434,7 @@ export class SolanaEngine {
               systemProgram: SYSTEM_PROGRAM_ADDRESS,
 
               outgoingMessageSalt: salt,
-              call: this.formatCall(opts)!,
+              call: this.formatCall(opts),
             },
             { programAddress: this.config.solana.bridgeProgram },
           ),
@@ -545,7 +552,10 @@ export class SolanaEngine {
         ),
       ]);
 
-    const maybeMessage = await fetchMaybeIncomingMessage(this.rpc, messageAddress);
+    const maybeMessage = await fetchMaybeIncomingMessage(
+      this.rpc,
+      messageAddress,
+    );
     if (maybeMessage.exists) {
       return { messageHash: event.messageHash };
     }
@@ -775,7 +785,9 @@ export class SolanaEngine {
     return allIxsAccounts;
   }
 
-  private formatCall(call?: CallParams) {
+  private formatCall(call: CallParams): FormattedCall;
+  private formatCall(call?: CallParams): FormattedCall | null;
+  private formatCall(call?: CallParams): FormattedCall | null {
     if (!call) return null;
 
     const callData = call.data.startsWith("0x")
