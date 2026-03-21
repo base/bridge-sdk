@@ -1,4 +1,4 @@
-import { type Account, type Address } from "@solana/kit";
+import type { Account, Address } from "@solana/kit";
 import {
   createPublicClient,
   createWalletClient,
@@ -187,7 +187,10 @@ export class BaseEngine {
       throw new Error("Multiple MessageInitiated events found (unsupported)");
     }
 
-    const event = msgInitEvents[0]!;
+    const event = msgInitEvents[0];
+    if (!event) {
+      throw new Error("No MessageInitiated event found");
+    }
 
     const rawProof = await this.publicClient.readContract({
       address: this.config.base.bridgeContract,

@@ -1,9 +1,9 @@
 import type { Instruction, Address as SolAddress } from "@solana/kit";
 import {
   AccountRole,
-  address as solAddress,
   createSolanaRpc,
   getProgramDerivedAddress,
+  address as solAddress,
 } from "@solana/kit";
 import type { Hash, Hex } from "viem";
 import { decodeEventLog, toBytes } from "viem";
@@ -629,7 +629,13 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       );
     }
 
-    const e = events[0]!;
+    const e = events[0];
+    if (!e) {
+      throw new BridgeProofNotAvailableError(
+        "No MessageInitiated event found in tx receipt",
+        { route: this.route, chain: this.route.sourceChain },
+      );
+    }
     return {
       messageHash: e.messageHash as Hex,
       mmrRoot: e.mmrRoot as Hex,
