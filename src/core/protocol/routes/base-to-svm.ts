@@ -94,6 +94,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
   private readonly solanaEngine: SolanaEngine;
   private readonly baseEngine: BaseEngine;
+  private readonly solanaRpc: ReturnType<typeof createSolanaRpc>;
 
   constructor(args: {
     route: BridgeRoute;
@@ -127,6 +128,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
     this.solanaEngine = new SolanaEngine({ config: engineConfig });
     this.baseEngine = new BaseEngine({ config: engineConfig });
+    this.solanaRpc = createSolanaRpc(this.solana.rpcUrl);
   }
 
   async capabilities(): Promise<RouteCapabilities> {
@@ -156,18 +158,13 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       );
     }
 
-    // Get current gas price from Base
-    const gasPrice = await this.evm.publicClient.getGasPrice();
-    const sourceGasCost = sourceGas * gasPrice;
-
-    // Estimate destination chain fees (Solana)
-    // Prove tx: base tx fee + minimal compute for prove operation
-    // Execute tx: variable cost depending on user instructions
+    // Fetch gas price and estimate execute fee in parallel (independent RPC calls)
     const proveFee = SOLANA_BASE_TX_FEE + SOLANA_PROVE_COMPUTE_LAMPORTS;
-
-    // Execute fee depends on the instructions being run
-    // We simulate the instructions to get accurate compute unit estimates
-    const executeFee = await this.estimateExecuteFee(req, warnings);
+    const [gasPrice, executeFee] = await Promise.all([
+      this.evm.publicClient.getGasPrice(),
+      this.estimateExecuteFee(req, warnings),
+    ]);
+    const sourceGasCost = sourceGas * gasPrice;
     const destinationFee = proveFee + executeFee;
 
     // Estimate timing for Base -> SVM
@@ -556,8 +553,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
     const pda = await this.deriveIncomingMessagePda(messageHash);
 
-    const rpc = createSolanaRpc(this.solana.rpcUrl);
-    const maybe = await fetchMaybeIncomingMessage(rpc, pda, {
+    const maybe = await fetchMaybeIncomingMessage(this.solanaRpc, pda, {
       abortSignal: opts?.signal,
     });
 
@@ -629,13 +625,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       );
     }
 
-    const e = events[0];
-    if (!e) {
-      throw new BridgeProofNotAvailableError(
-        "No MessageInitiated event found in tx receipt",
-        { route: this.route, chain: this.route.sourceChain },
-      );
-    }
+    const e = events[0]!;
     return {
       messageHash: e.messageHash as Hex,
       mmrRoot: e.mmrRoot as Hex,
