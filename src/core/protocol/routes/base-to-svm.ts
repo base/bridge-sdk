@@ -35,6 +35,7 @@ import type {
 import { isSolanaDestinationCall } from "../../utils";
 import { BaseEngine } from "../engines/base-engine";
 import { SolanaEngine } from "../engines/solana-engine";
+import { SOLANA_BASE_TX_FEE } from "../engines/constants";
 import type { EngineConfig } from "../engines/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,8 +57,6 @@ const BRIDGE_TOKEN_BASE_GAS = 150_000n;
 // Solana fee estimation constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Solana base transaction fee in lamports (per signature) */
-const SOLANA_BASE_TX_FEE = 5_000n;
 /** Estimated compute units for prove operation */
 const SOLANA_PROVE_COMPUTE_LAMPORTS = 5_000n;
 /** Bridge execute overhead in compute units (CPI, account validation) */
@@ -356,30 +355,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const ixs = this.convertToIx(destCall.call.instructions);
     const txHash = await this.baseEngine.bridgeCall({ ixs });
 
-    const { messageHash, nonce, sender, data, mmrRoot } =
-      await this.extractMessageInitiated(txHash);
-
-    const messageRef: MessageRef = {
-      route: req.route,
-      source: {
-        chain: req.route.sourceChain,
-        id: { scheme: "evm:messageHash", value: messageHash },
-      },
-      derived: {
-        txHash,
-        nonce: nonce.toString(),
-        sender,
-        data,
-        mmrRoot,
-      },
-    };
-
-    return {
-      route: req.route,
-      request: req,
-      messageRef,
-      initiationTx: txHash,
-    };
+    return this.buildOperation(req, txHash);
   }
 
   /**
@@ -419,6 +395,17 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       ixs,
     });
 
+    return this.buildOperation(req, txHash);
+  }
+
+  /**
+   * Extract the MessageInitiated event from a tx receipt and build the
+   * common BridgeOperation returned by all initiation helpers.
+   */
+  private async buildOperation(
+    req: BridgeRequest,
+    txHash: Hash,
+  ): Promise<BridgeOperation> {
     const { messageHash, nonce, sender, data, mmrRoot } =
       await this.extractMessageInitiated(txHash);
 

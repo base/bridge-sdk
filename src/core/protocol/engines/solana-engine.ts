@@ -80,7 +80,7 @@ import type {
   Rpc,
 } from "./types";
 
-export interface BridgeOpResult {
+interface BridgeOpResult {
   outgoingPda: SolAddress;
   signature: Signature;
 }
@@ -663,7 +663,7 @@ export class SolanaEngine {
     }
 
     return [
-      ...(await this.getIxAccounts(ixs)),
+      ...(this.getIxAccounts(ixs)),
       ...ixs.map((i: Ix) => ({
         address: i.programId,
         role: AccountRole.READONLY,
@@ -690,7 +690,7 @@ export class SolanaEngine {
     const ixs = message.ixs;
 
     remainingAccounts.push(
-      ...(await this.getIxAccounts(ixs)),
+      ...(this.getIxAccounts(ixs)),
       ...ixs.map((i: Ix) => ({
         address: i.programId,
         role: AccountRole.READONLY,
@@ -760,26 +760,22 @@ export class SolanaEngine {
     ];
   }
 
-  private async getIxAccounts(ixs: Ix[]) {
+  private getIxAccounts(ixs: Ix[]) {
     const allIxsAccounts = [];
 
     for (const ix of ixs) {
-      const ixAccounts = await Promise.all(
-        ix.accounts.map(async (acc) => {
-          return {
-            address: acc.pubkey,
-            role: acc.isWritable
-              ? acc.isSigner
-                ? AccountRole.WRITABLE_SIGNER
-                : AccountRole.WRITABLE
-              : acc.isSigner
-                ? AccountRole.READONLY_SIGNER
-                : AccountRole.READONLY,
-          };
-        }),
-      );
-
-      allIxsAccounts.push(...ixAccounts);
+      for (const acc of ix.accounts) {
+        allIxsAccounts.push({
+          address: acc.pubkey,
+          role: acc.isWritable
+            ? acc.isSigner
+              ? AccountRole.WRITABLE_SIGNER
+              : AccountRole.WRITABLE
+            : acc.isSigner
+              ? AccountRole.READONLY_SIGNER
+              : AccountRole.READONLY,
+        });
+      }
     }
 
     return allIxsAccounts;

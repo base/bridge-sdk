@@ -31,6 +31,7 @@ import type {
 import { isEvmDestinationCall } from "../../utils";
 import { BaseEngine } from "../engines/base-engine";
 import { SolanaEngine } from "../engines/solana-engine";
+import { DEFAULT_EVM_GAS_LIMIT, SOLANA_BASE_TX_FEE } from "../engines/constants";
 import type { EngineConfig } from "../engines/types";
 import { buildEvmIncomingMessage } from "../identity";
 
@@ -38,12 +39,8 @@ import { buildEvmIncomingMessage } from "../identity";
 // Fee estimation constants for SVM -> Base quotes
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Solana base transaction fee in lamports */
-const SOLANA_BASE_TX_FEE = 5_000n;
 /** Additional compute unit buffer for bridge operations */
 const SOLANA_COMPUTE_UNIT_BUFFER = 10_000n;
-/** Default gas limit when not specified */
-const DEFAULT_GAS_LIMIT = 100_000n;
 /** Base gas cost for token transfer on Base (without call) */
 const BASE_TOKEN_TRANSFER_GAS = 65_000n;
 
@@ -128,7 +125,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
   }
 
   async quote(req: QuoteRequest): Promise<Quote> {
-    const gasLimit = req.relay?.gasLimit ?? DEFAULT_GAS_LIMIT;
+    const gasLimit = req.relay?.gasLimit ?? DEFAULT_EVM_GAS_LIMIT;
     const relayMode = req.relay?.mode ?? "auto";
     const warnings: string[] = [];
 
@@ -260,7 +257,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     }
 
     const evmCall = this.extractEvmCall(req.action.call);
-    const gasLimit = req.relay?.gasLimit ?? DEFAULT_GAS_LIMIT;
+    const gasLimit = req.relay?.gasLimit ?? DEFAULT_EVM_GAS_LIMIT;
     const payForRelay = (req.relay?.mode ?? "auto") === "auto";
 
     const { outgoingPda, signature } = await this.solanaEngine.bridgeCall({
@@ -286,20 +283,16 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       throw new Error("Expected transfer action");
     }
 
-    const { evmCall, gasLimit, payForRelay } = this.transferDefaults(req);
+    const { evmCall, gasLimit, payForRelay } = this.transferDefaults(
+      req,
+      req.action.call,
+    );
 
     const { outgoingPda, signature } = await this.solanaEngine.bridgeSol({
       to: req.action.recipient as `0x${string}`,
       amount: req.action.amount,
       payForRelay,
-      call: evmCall
-        ? {
-            to: evmCall.to,
-            value: evmCall.value,
-            data: evmCall.data,
-            ty: evmCall.ty,
-          }
-        : undefined,
+      call: evmCall,
       gasLimit,
       idempotencyKey: req.idempotencyKey,
     });
@@ -327,7 +320,10 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       });
     }
 
-    const { evmCall, gasLimit, payForRelay } = this.transferDefaults(req);
+    const { evmCall, gasLimit, payForRelay } = this.transferDefaults(
+      req,
+      req.action.call,
+    );
 
     const { outgoingPda, signature } = await this.solanaEngine.bridgeSpl({
       to: req.action.recipient as `0x${string}`,
@@ -335,14 +331,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       remoteToken,
       amount: req.action.amount,
       payForRelay,
-      call: evmCall
-        ? {
-            to: evmCall.to,
-            value: evmCall.value,
-            data: evmCall.data,
-            ty: evmCall.ty,
-          }
-        : undefined,
+      call: evmCall,
       gasLimit,
       idempotencyKey: req.idempotencyKey,
     });
@@ -360,21 +349,17 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       throw new Error("Expected wrapped transfer action");
     }
 
-    const { evmCall, gasLimit, payForRelay } = this.transferDefaults(req);
+    const { evmCall, gasLimit, payForRelay } = this.transferDefaults(
+      req,
+      req.action.call,
+    );
 
     const { outgoingPda, signature } = await this.solanaEngine.bridgeWrapped({
       to: req.action.recipient as `0x${string}`,
       mint: req.action.asset.address,
       amount: req.action.amount,
       payForRelay,
-      call: evmCall
-        ? {
-            to: evmCall.to,
-            value: evmCall.value,
-            data: evmCall.data,
-            ty: evmCall.ty,
-          }
-        : undefined,
+      call: evmCall,
       gasLimit,
       idempotencyKey: req.idempotencyKey,
     });
@@ -386,16 +371,17 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
    * Extract common defaults shared by all transfer initiation helpers:
    * the optional EVM destination call, gas limit, and relay-payment flag.
    */
-  private transferDefaults(req: BridgeRequest): {
+  private transferDefaults(
+    req: BridgeRequest,
+    call?: DestinationCall,
+  ): {
     evmCall: EvmCall | undefined;
     gasLimit: bigint;
     payForRelay: boolean;
   } {
     return {
-      evmCall: this.extractOptionalEvmCall(
-        (req.action as { call?: DestinationCall }).call,
-      ),
-      gasLimit: req.relay?.gasLimit ?? DEFAULT_GAS_LIMIT,
+      evmCall: this.extractOptionalEvmCall(call),
+      gasLimit: req.relay?.gasLimit ?? DEFAULT_EVM_GAS_LIMIT,
       payForRelay: (req.relay?.mode ?? "auto") === "auto",
     };
   }
