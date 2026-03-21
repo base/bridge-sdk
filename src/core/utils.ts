@@ -42,13 +42,13 @@ export function validateDestinationCall(
 ): void {
   const isSvmDestination = isSolanaChainId(route.destinationChain);
 
-  if (isSvmDestination && call.kind !== "solana") {
+  if (isSvmDestination && !isSolanaDestinationCall(call)) {
     throw new Error(
       `Call type mismatch: route destination is Solana but call kind is "${call.kind}". ` +
         `Use { kind: "solana", call: SolanaCall } for Base -> SVM routes.`,
     );
   }
-  if (!isSvmDestination && call.kind !== "evm") {
+  if (!isSvmDestination && !isEvmDestinationCall(call)) {
     throw new Error(
       `Call type mismatch: route destination is EVM but call kind is "${call.kind}". ` +
         `Use { kind: "evm", call: EvmCall } for SVM -> Base routes.`,
