@@ -33,6 +33,12 @@ function mergeRecords<T extends Record<string, unknown>>(
 ): Record<ChainId, T> {
   if (!override) return base;
   const out: Record<ChainId, T> = { ...base };
+
+  // Derive the set of required keys from an existing complete record.
+  const sample = Object.values(base)[0];
+  if (!sample) return out;
+  const requiredKeys = Object.keys(sample);
+
   for (const [chainId, dep] of Object.entries(override)) {
     const existing = out[chainId];
     if (existing) {
@@ -41,7 +47,9 @@ function mergeRecords<T extends Record<string, unknown>>(
         if (value != null) merged[key] = value;
       }
       out[chainId] = merged as T;
-    } else if (Object.values(dep).every(Boolean)) {
+    } else if (
+      requiredKeys.every((key) => (dep as Record<string, unknown>)[key] != null)
+    ) {
       out[chainId] = dep as T;
     }
   }
