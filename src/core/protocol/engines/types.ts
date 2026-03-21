@@ -1,5 +1,5 @@
 import type { Address, createSolanaRpc, KeyPairSigner } from "@solana/kit";
-import type { Chain, Address as EvmAddress, Hash, Hex } from "viem";
+import type { Chain, Address as EvmAddress, Hex } from "viem";
 import type {
   BridgeBaseToSolanaStateIncomingMessageMessage,
   BridgeBaseToSolanaStateIncomingMessageTransfer,
