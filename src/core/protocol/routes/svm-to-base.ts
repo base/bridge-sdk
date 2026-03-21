@@ -56,6 +56,13 @@ const MIN_TIME_MS = 30_000;
 /** Maximum expected time: conservative estimate with delays */
 const MAX_TIME_MS = 120_000;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Message identification schemes
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SOURCE_ID_SCHEME = "solana:outgoingMessagePda" as const;
+const DESTINATION_ID_SCHEME = "evm:bridgeOuterHash" as const;
+
 /**
  * SVM -> Base route adapter.
  *
@@ -429,14 +436,24 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       route: args.route,
       source: {
         chain: args.route.sourceChain,
-        id: { scheme: "solana:outgoingMessagePda", value: args.outgoingPda },
+        id: { scheme: SOURCE_ID_SCHEME, value: args.outgoingPda },
       },
       destination: {
         chain: args.route.destinationChain,
-        id: { scheme: "evm:bridgeOuterHash", value: args.destinationHash },
+        id: { scheme: DESTINATION_ID_SCHEME, value: args.destinationHash },
       },
       derived: { gasLimit: args.gasLimit.toString() },
     };
+  }
+
+  /**
+   * Extract the destination outer hash from a MessageRef, if present.
+   */
+  private getDestinationOuterHash(ref: MessageRef): Hex | undefined {
+    if (ref.destination?.id.scheme === DESTINATION_ID_SCHEME) {
+      return ref.destination.id.value as Hex;
+    }
+    return undefined;
   }
 
   /**
@@ -471,10 +488,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     ref: MessageRef,
     _opts?: ExecuteOptions,
   ): Promise<ExecuteResult> {
-    if (
-      !ref.destination ||
-      ref.destination.id.scheme !== "evm:bridgeOuterHash"
-    ) {
+    if (!this.getDestinationOuterHash(ref)) {
       throw new BridgeUnsupportedActionError({
         route: this.route,
         actionKind: "execute: missing destination outerHash",
@@ -495,10 +509,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
   ): Promise<ExecutionStatus> {
     const at = Date.now();
 
-    const outerHash =
-      ref.destination?.id.scheme === "evm:bridgeOuterHash"
-        ? (ref.destination.id.value as Hex)
-        : undefined;
+    const outerHash = this.getDestinationOuterHash(ref);
 
     if (!outerHash) return { type: "Unknown", at };
 
