@@ -32,9 +32,13 @@ test("buildEvmIncomingMessage produces correct hashes and message", () => {
     { gasLimit },
   );
 
-  // Verify hashes are well-formed hex strings
-  expect(res.innerHash).toMatch(/^0x[0-9a-f]{64}$/);
-  expect(res.outerHash).toMatch(/^0x[0-9a-f]{64}$/);
+  // Verify hashes match known-correct values (snapshot)
+  expect(res.innerHash).toBe(
+    "0xcfec34b5085fad7d40fc731d6647a8e20efab3a12b6a30f3f357baf9cdf7e903",
+  );
+  expect(res.outerHash).toBe(
+    "0xebb305f55da790bd21c434446a422685def8f660ffb0417169f214a6834383c2",
+  );
 
   // Verify message fields
   expect(res.evmMessage.nonce).toBe(42n);

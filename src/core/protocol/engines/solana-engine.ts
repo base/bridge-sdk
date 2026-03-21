@@ -147,7 +147,8 @@ export class SolanaEngine {
     this.rpc = createSolanaRpc(this.config.solana.rpcUrl);
 
     const url = new URL(this.config.solana.rpcUrl);
-    const wssUrl = `wss://${url.host}${url.pathname}${url.search}`;
+    const wsScheme = url.protocol === "http:" ? "ws" : "wss";
+    const wssUrl = `${wsScheme}://${url.host}${url.pathname}${url.search}`;
     const rpcSubscriptions = createSolanaRpcSubscriptions(wssUrl);
     this.sendAndConfirmTx = sendAndConfirmTransactionFactory({
       rpc: this.rpc,
