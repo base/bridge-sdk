@@ -37,4 +37,3 @@ export async function loadSolanaKeypair(path: string): Promise<KeyPairSigner> {
   const keypair = await createKeyPairFromBytes(keypairBytes);
   return await createSignerFromKeyPair(keypair);
 }
-
