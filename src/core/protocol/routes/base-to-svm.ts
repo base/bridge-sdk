@@ -34,8 +34,8 @@ import type {
 } from "../../types";
 import { isSolanaDestinationCall } from "../../utils";
 import { BaseEngine } from "../engines/base-engine";
-import { SolanaEngine } from "../engines/solana-engine";
 import { SOLANA_BASE_TX_FEE } from "../engines/constants";
+import { SolanaEngine } from "../engines/solana-engine";
 import type { EngineConfig } from "../engines/types";
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -613,7 +613,7 @@ export class SolanaEngine {
 
     let remainingAccounts =
       message.__kind === "Call"
-        ? await this.messageCallAccounts(message)
+        ? this.messageCallAccounts(message)
         : await this.messageTransferAccounts(
             rpc,
             message,
