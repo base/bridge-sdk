@@ -1,20 +1,4 @@
-import type { ExecutionStatus, RouteCapabilities, RouteStep } from "./types";
-
-export function makeCapabilities(args: {
-  steps: RouteStep[];
-  autoRelay?: boolean;
-  manualExecute?: boolean;
-  prove?: boolean;
-  constraints?: RouteCapabilities["constraints"];
-}): RouteCapabilities {
-  return {
-    steps: args.steps,
-    autoRelay: args.autoRelay,
-    manualExecute: args.manualExecute,
-    prove: args.prove,
-    constraints: args.constraints,
-  };
-}
+import type { ExecutionStatus } from "./types";
 
 export function isTerminalStatus(s: ExecutionStatus): boolean {
   return s.type === "Executed" || s.type === "Failed" || s.type === "Expired";
