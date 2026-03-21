@@ -81,12 +81,6 @@ function asEvmAdapter(adapter: ChainAdapter): EvmChainAdapter | undefined {
 }
 
 export function supportsBridgeRoute(route: BridgeRoute): boolean {
-  // Hub-and-spoke invariant: routes must include Base mainnet or Base Sepolia.
-  const includesBase =
-    isBaseEvmChainId(route.sourceChain) ||
-    isBaseEvmChainId(route.destinationChain);
-  if (!includesBase) return false;
-
   return (
     (isSolanaChainId(route.sourceChain) &&
       isBaseEvmChainId(route.destinationChain)) ||
