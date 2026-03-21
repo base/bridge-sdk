@@ -656,14 +656,14 @@ export class SolanaEngine {
     return signature;
   }
 
-  private async messageCallAccounts(message: MessageCall) {
+  private messageCallAccounts(message: MessageCall) {
     const ixs = message.fields[0];
     if (ixs.length === 0) {
       throw new Error("Zero instructions in call message");
     }
 
     return [
-      ...(this.getIxAccounts(ixs)),
+      ...this.getIxAccounts(ixs),
       ...ixs.map((i: Ix) => ({
         address: i.programId,
         role: AccountRole.READONLY,
@@ -690,7 +690,7 @@ export class SolanaEngine {
     const ixs = message.ixs;
 
     remainingAccounts.push(
-      ...(this.getIxAccounts(ixs)),
+      ...this.getIxAccounts(ixs),
       ...ixs.map((i: Ix) => ({
         address: i.programId,
         role: AccountRole.READONLY,
