@@ -29,6 +29,7 @@ import type {
   StatusOptions,
 } from "../../types";
 import { isEvmDestinationCall } from "../../utils";
+import { buildEvmIncomingMessage } from "../encoding";
 import { BaseEngine } from "../engines/base-engine";
 import {
   DEFAULT_EVM_GAS_LIMIT,
@@ -36,7 +37,6 @@ import {
 } from "../engines/constants";
 import { SolanaEngine } from "../engines/solana-engine";
 import type { EngineConfig } from "../engines/types";
-import { buildEvmIncomingMessage } from "../encoding";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fee estimation constants for SVM -> Base quotes

@@ -178,7 +178,11 @@ export function buildEvmIncomingMessage(
   );
 
   const outerHash = keccak256(
-    encodeAbiParameters(OUTER_HASH_ABI, [nonce, outgoingMessagePubkey, innerHash]),
+    encodeAbiParameters(OUTER_HASH_ABI, [
+      nonce,
+      outgoingMessagePubkey,
+      innerHash,
+    ]),
   );
 
   return {
