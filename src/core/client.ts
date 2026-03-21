@@ -215,6 +215,7 @@ class DefaultBridgeClient implements BridgeClient {
       `bridge.resolveRoute: constructing adapter for ${route.sourceChain} -> ${route.destinationChain}`,
     );
     const created = resolveBridgeRoute(route, this.chains, this.bridge);
+    created.catch(() => this.adapterCache.delete(key));
     this.adapterCache.set(key, created);
     return created;
   }
