@@ -1,33 +1,7 @@
-import { sleep } from "../../utils/time";
+import { raceAbort, sleep } from "../../utils/time";
 import { isAllowedTransition, isTerminalStatus } from "../capabilities";
 import { BridgeInvariantViolationError, BridgeTimeoutError } from "../errors";
 import type { ExecutionStatus, MonitorOptions } from "../types";
-
-function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  return new Promise<T>((resolve, reject) => {
-    if (signal.aborted) {
-      promise.catch(() => {});
-      reject(signal.reason);
-      return;
-    }
-    const onAbort = () => {
-      promise.catch(() => {});
-      reject(signal.reason);
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
-      },
-      (err) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(err);
-      },
-    );
-  });
-}
 
 function stableStatusKey(s: ExecutionStatus): string {
   switch (s.type) {
@@ -76,12 +50,6 @@ export async function* pollingMonitor(
   let prevKey: string | undefined;
 
   while (true) {
-    if (Date.now() - start > timeoutMs) {
-      throw new BridgeTimeoutError(`monitor timed out after ${timeoutMs}ms`, {
-        stage: "monitor",
-      });
-    }
-
     signal?.throwIfAborted();
 
     const next = await raceAbort(getStatus(signal), signal);
@@ -102,6 +70,12 @@ export async function* pollingMonitor(
 
     if (isTerminalStatus(next)) {
       return;
+    }
+
+    if (Date.now() - start > timeoutMs) {
+      throw new BridgeTimeoutError(`monitor timed out after ${timeoutMs}ms`, {
+        stage: "monitor",
+      });
     }
 
     await sleep(pollIntervalMs, signal);
