@@ -1,7 +1,7 @@
+import { sleep } from "../../utils/time";
 import { isAllowedTransition, isTerminalStatus } from "../capabilities";
 import { BridgeInvariantViolationError, BridgeTimeoutError } from "../errors";
 import type { ExecutionStatus, MonitorOptions } from "../types";
-import { sleep } from "../../utils/time";
 
 function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
