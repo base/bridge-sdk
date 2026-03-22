@@ -42,6 +42,10 @@ import {
   fetchCfg,
   getPayForRelayInstruction,
 } from "../../../clients/ts/src/base-relayer";
+import type {
+  BridgeBaseToSolanaStateIncomingMessageMessage,
+  BridgeBaseToSolanaStateIncomingMessageTransfer,
+} from "../../../clients/ts/src/bridge";
 import {
   CallType,
   fetchBridge,
@@ -63,6 +67,7 @@ import { getIdlConstant } from "../../../utils/bridge-idl.constants";
 import { getRelayerIdlConstant } from "../../../utils/relayer-idl.constants";
 import { sleep } from "../../../utils/time";
 import { BridgeAlreadyExecutedError, BridgeNotProvenError } from "../../errors";
+import type { EvmCall } from "../../types";
 import { deriveIncomingMessagePda } from "../pda";
 import {
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
@@ -71,11 +76,6 @@ import {
   SYSTEM_PROGRAM_ADDRESS,
   TOKEN_2022_PROGRAM_ADDRESS,
 } from "./constants";
-import type {
-  BridgeBaseToSolanaStateIncomingMessageMessage,
-  BridgeBaseToSolanaStateIncomingMessageTransfer,
-} from "../../../clients/ts/src/bridge";
-import type { EvmCall } from "../../types";
 
 interface SolanaEngineConfig {
   rpcUrl: string;
@@ -575,10 +575,7 @@ export class SolanaEngine {
             getU64Encoder({ endian: Endian.Little }).encode(blockNumber),
           ],
         }),
-        deriveIncomingMessagePda(
-          this.config.bridgeProgram,
-          event.messageHash,
-        ),
+        deriveIncomingMessagePda(this.config.bridgeProgram, event.messageHash),
       ]);
 
     const maybeMessage = await fetchMaybeIncomingMessage(

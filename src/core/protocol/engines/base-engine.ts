@@ -1,9 +1,9 @@
 import type { Account, Address } from "@solana/kit";
 import {
-  type Address as EvmAddress,
   type Chain,
   createPublicClient,
   createWalletClient,
+  type Address as EvmAddress,
   type Hash,
   type Hex,
   http,
@@ -20,6 +20,7 @@ import {
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
 import { sleep } from "../../../utils/time";
+import type { EvmCall } from "../../types";
 import { buildEvmIncomingMessage, bytes32FromSolanaPubkey } from "../encoding";
 import { decodeMessageInitiatedEvents } from "../events";
 import {
@@ -27,7 +28,6 @@ import {
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
 } from "./constants";
-import type { EvmCall } from "../../types";
 
 interface BaseEngineConfig {
   rpcUrl: string;

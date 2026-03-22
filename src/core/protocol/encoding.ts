@@ -5,6 +5,7 @@ import type {
   Call,
   fetchOutgoingMessage,
 } from "../../clients/ts/src/bridge";
+
 /** Bridge-level message type discriminant (Call=0, Transfer=1, TransferAndCall=2). */
 type MessageTypeValue = 0 | 1 | 2;
 
