@@ -177,10 +177,7 @@ export class BaseEngine {
       );
     }
 
-    const [event] = msgInitEvents as [
-      (typeof msgInitEvents)[number],
-      ...unknown[],
-    ];
+    const event = msgInitEvents[0]!;
 
     const rawProof = await this.publicClient.readContract({
       address: this.config.bridgeContract,
@@ -195,7 +192,11 @@ export class BaseEngine {
 
   async monitorMessageExecution(
     outgoingMessageAccount: Account<OutgoingMessage, string>,
-    options: { timeoutMs?: number; pollIntervalMs?: number } = {},
+    options: {
+      gasLimit?: bigint;
+      timeoutMs?: number;
+      pollIntervalMs?: number;
+    } = {},
   ) {
     const timeoutMs = options.timeoutMs ?? DEFAULT_MONITOR_TIMEOUT_MS;
     const pollIntervalMs =
@@ -203,7 +204,7 @@ export class BaseEngine {
     const startTime = Date.now();
 
     const { outerHash } = buildEvmIncomingMessage(outgoingMessageAccount, {
-      gasLimit: DEFAULT_EVM_GAS_LIMIT,
+      gasLimit: options.gasLimit ?? DEFAULT_EVM_GAS_LIMIT,
     });
 
     while (Date.now() - startTime <= timeoutMs) {
@@ -278,9 +279,7 @@ export class BaseEngine {
     }
 
     // Assert Bridge.getMessageHash(message) equals expected hash
-    if (
-      (messageHashResult as string).toLowerCase() !== outerHash.toLowerCase()
-    ) {
+    if (messageHashResult.toLowerCase() !== outerHash.toLowerCase()) {
       throw new Error(
         `Hash mismatch: getMessageHash != expected. got=${messageHashResult}, expected=${outerHash}`,
       );
@@ -342,10 +341,11 @@ export class BaseEngine {
   }
 
   private formatIxs(ixs: Ix[]) {
+    const encoder = getIxAccountEncoder();
     return ixs.map((ix) => ({
       programId: bytes32FromSolanaPubkey(ix.programId),
       serializedAccounts: ix.accounts.map((acc) =>
-        toHex(new Uint8Array(getIxAccountEncoder().encode(acc))),
+        toHex(new Uint8Array(encoder.encode(acc))),
       ),
       data: toHex(new Uint8Array(ix.data)),
     }));
