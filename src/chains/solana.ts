@@ -14,6 +14,3 @@ export const solanaDevnet: BridgeSolanaChain = {
   id: "solana:devnet",
   cluster: "devnet",
 };
-
-/** Default Solana chain export (mainnet). */
-export const solana = solanaMainnet;
