@@ -1,24 +1,7 @@
 import { isAllowedTransition, isTerminalStatus } from "../capabilities";
 import { BridgeInvariantViolationError, BridgeTimeoutError } from "../errors";
 import type { ExecutionStatus, MonitorOptions } from "../types";
-
-function sleep(ms: number, signal?: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
+import { sleep } from "../../utils/time";
 
 function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
