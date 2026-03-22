@@ -1,6 +1,6 @@
 import type { ChainRef } from "../core/types";
 
-export type BridgeSolanaChain = ChainRef & {
+type BridgeSolanaChain = ChainRef & {
   /** Canonical cluster identifier. */
   cluster: "mainnet" | "devnet";
 };

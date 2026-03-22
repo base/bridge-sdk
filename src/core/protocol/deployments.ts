@@ -1,6 +1,6 @@
 import { address as solAddress } from "@solana/kit";
-import type { ChainId } from "../types";
-import { BASE_MAINNET_CHAIN_ID, type BridgeConfig } from "./router";
+import type { BridgeConfig, ChainId } from "../types";
+import { BASE_MAINNET_CHAIN_ID } from "./router";
 
 /**
  * Built-in bridge deployments bundled with the SDK.

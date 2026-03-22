@@ -1,7 +1,7 @@
 import type { Chain } from "viem";
 import { base as viemBase, baseSepolia as viemBaseSepolia } from "viem/chains";
 
-export type BridgeEvmChain = {
+type BridgeEvmChain = {
   /** Canonical chain id used by this SDK (CAIP-2 style). */
   id: `eip155:${number}`;
   /** Numeric EVM chain id (e.g. 8453). */

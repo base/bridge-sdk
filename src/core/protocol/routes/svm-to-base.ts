@@ -36,8 +36,6 @@ import {
   SOLANA_BASE_TX_FEE,
 } from "../engines/constants";
 import { SolanaEngine } from "../engines/solana-engine";
-import type { EngineConfig } from "../engines/types";
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Fee estimation constants for SVM -> Base quotes
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,23 +103,22 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     this.evmDeployment = args.evmDeployment;
     this.tokenMapping = args.tokenMapping;
 
-    const engineConfig: EngineConfig = {
-      solana: {
+    this.solanaEngine = new SolanaEngine({
+      config: {
         rpcUrl: this.solana.rpcUrl,
         payer: this.solana.payer,
         bridgeProgram: this.solanaDeployment.bridgeProgram,
         relayerProgram: this.solanaDeployment.relayerProgram,
       },
-      base: {
+    });
+    this.baseEngine = new BaseEngine({
+      config: {
         rpcUrl: this.evm.rpcUrl,
         bridgeContract: this.evmDeployment.bridgeContract,
         chain: this.evm.viemChain,
         privateKey: this.evm.privateKey,
       },
-    };
-
-    this.solanaEngine = new SolanaEngine({ config: engineConfig });
-    this.baseEngine = new BaseEngine({ config: engineConfig });
+    });
   }
 
   async capabilities(): Promise<RouteCapabilities> {

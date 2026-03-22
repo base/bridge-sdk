@@ -2,7 +2,7 @@ import type { Hex } from "viem";
 import { decodeEventLog } from "viem";
 import { BRIDGE_ABI } from "../../interfaces/abis/bridge.abi";
 
-export interface MessageInitiatedEvent {
+interface MessageInitiatedEvent {
   messageHash: Hex;
   mmrRoot: Hex;
   message: { nonce: bigint; sender: Hex; data: Hex };

@@ -5,13 +5,23 @@ import type {
   Call,
   fetchOutgoingMessage,
 } from "../../clients/ts/src/bridge";
-import type { EvmIncomingMessage } from "./engines/types";
+/** Bridge-level message type discriminant (Call=0, Transfer=1, TransferAndCall=2). */
+type MessageTypeValue = 0 | 1 | 2;
+
+interface EvmIncomingMessage {
+  outgoingMessagePubkey: Hex;
+  gasLimit: bigint;
+  nonce: bigint;
+  sender: Hex;
+  ty: MessageTypeValue;
+  data: Hex;
+}
 
 export const MESSAGE_TYPE = {
   Call: 0,
   Transfer: 1,
   TransferAndCall: 2,
-} as const;
+} as const satisfies Record<string, MessageTypeValue>;
 
 const base58Encoder = getBase58Encoder();
 
@@ -44,7 +54,7 @@ export function bytes32FromSolanaPubkey(pubkey: SolAddress): Hex {
 
 export function encodeOutgoingMessagePayload(
   msg: BridgeSolanaToBaseStateOutgoingMessageMessage,
-): { ty: number; data: Hex } {
+): { ty: MessageTypeValue; data: Hex } {
   // Call
   if (msg.__kind === "Call") {
     const call = msg.fields[0];

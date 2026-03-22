@@ -1,5 +1,7 @@
 import type { Account, Address } from "@solana/kit";
 import {
+  type Address as EvmAddress,
+  type Chain,
   createPublicClient,
   createWalletClient,
   type Hash,
@@ -25,17 +27,24 @@ import {
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
 } from "./constants";
-import type { CallParams, EngineConfig } from "./types";
+import type { EvmCall } from "../../types";
 
-export interface BaseEngineOpts {
-  config: EngineConfig;
+interface BaseEngineConfig {
+  rpcUrl: string;
+  bridgeContract: EvmAddress;
+  chain: Chain;
+  privateKey?: Hex;
 }
 
-export interface BaseBridgeCallOpts {
+interface BaseEngineOpts {
+  config: BaseEngineConfig;
+}
+
+interface BaseBridgeCallOpts {
   ixs: Ix[];
 }
 
-export interface BaseBridgeTokenOpts {
+interface BaseBridgeTokenOpts {
   transfer: {
     localToken: Hex;
     remoteToken: Address;
@@ -46,7 +55,7 @@ export interface BaseBridgeTokenOpts {
 }
 
 export class BaseEngine {
-  private readonly config: EngineConfig;
+  private readonly config: BaseEngineConfig;
   private readonly publicClient: PublicClient;
   private readonly walletClient: WalletClient | undefined;
   private readonly account: ReturnType<typeof privateKeyToAccount> | undefined;
@@ -55,23 +64,23 @@ export class BaseEngine {
   constructor(opts: BaseEngineOpts) {
     this.config = opts.config;
     this.publicClient = createPublicClient({
-      chain: this.config.base.chain,
-      transport: http(this.config.base.rpcUrl),
+      chain: this.config.chain,
+      transport: http(this.config.rpcUrl),
     }) as PublicClient;
 
-    if (this.config.base.privateKey) {
+    if (this.config.privateKey) {
       this.walletClient = createWalletClient({
-        chain: this.config.base.chain,
-        transport: http(this.config.base.rpcUrl),
+        chain: this.config.chain,
+        transport: http(this.config.rpcUrl),
       });
-      this.account = privateKeyToAccount(this.config.base.privateKey);
+      this.account = privateKeyToAccount(this.config.privateKey);
     }
   }
 
   private async getValidatorAddress(): Promise<Hex> {
     if (!this.validatorAddressPromise) {
       this.validatorAddressPromise = this.publicClient.readContract({
-        address: this.config.base.bridgeContract,
+        address: this.config.bridgeContract,
         abi: BRIDGE_ABI,
         functionName: "BRIDGE_VALIDATOR",
       });
@@ -91,9 +100,9 @@ export class BaseEngine {
     };
   }
 
-  async estimateGasForCall(call: CallParams): Promise<bigint> {
+  async estimateGasForCall(call: EvmCall): Promise<bigint> {
     return await this.publicClient.estimateGas({
-      account: this.config.base.bridgeContract,
+      account: this.config.bridgeContract,
       to: call.to,
       data: call.data,
       value: call.value,
@@ -105,12 +114,12 @@ export class BaseEngine {
     const formattedIxs = this.formatIxs(opts.ixs);
 
     const { request } = await this.publicClient.simulateContract({
-      address: this.config.base.bridgeContract,
+      address: this.config.bridgeContract,
       abi: BRIDGE_ABI,
       functionName: "bridgeCall",
       args: [formattedIxs],
       account,
-      chain: this.config.base.chain,
+      chain: this.config.chain,
     });
 
     return await walletClient.writeContract(request);
@@ -128,12 +137,12 @@ export class BaseEngine {
     };
 
     const { request } = await this.publicClient.simulateContract({
-      address: this.config.base.bridgeContract,
+      address: this.config.bridgeContract,
       abi: BRIDGE_ABI,
       functionName: "bridgeToken",
       args: [transferStruct, formattedIxs],
       account,
-      chain: this.config.base.chain,
+      chain: this.config.chain,
     });
 
     return await walletClient.writeContract(request);
@@ -174,7 +183,7 @@ export class BaseEngine {
     ];
 
     const rawProof = await this.publicClient.readContract({
-      address: this.config.base.bridgeContract,
+      address: this.config.bridgeContract,
       abi: BRIDGE_ABI,
       functionName: "generateProof",
       args: [event.message.nonce],
@@ -199,7 +208,7 @@ export class BaseEngine {
 
     while (Date.now() - startTime <= timeoutMs) {
       const isSuccessful = await this.publicClient.readContract({
-        address: this.config.base.bridgeContract,
+        address: this.config.bridgeContract,
         abi: BRIDGE_ABI,
         functionName: "successes",
         args: [outerHash],
@@ -235,19 +244,19 @@ export class BaseEngine {
       await this.publicClient.multicall({
         contracts: [
           {
-            address: this.config.base.bridgeContract,
+            address: this.config.bridgeContract,
             abi: BRIDGE_ABI,
             functionName: "successes",
             args: [outerHash],
           },
           {
-            address: this.config.base.bridgeContract,
+            address: this.config.bridgeContract,
             abi: BRIDGE_ABI,
             functionName: "failures",
             args: [outerHash],
           },
           {
-            address: this.config.base.bridgeContract,
+            address: this.config.bridgeContract,
             abi: BRIDGE_ABI,
             functionName: "getMessageHash",
             args: [evmMessage],
@@ -286,12 +295,12 @@ export class BaseEngine {
 
     // Execute the message on Base
     const tx = await walletClient.writeContract({
-      address: this.config.base.bridgeContract,
+      address: this.config.bridgeContract,
       abi: BRIDGE_ABI,
       functionName: "relayMessages",
       args: [[{ ...evmMessage }]],
       account,
-      chain: this.config.base.chain,
+      chain: this.config.chain,
     });
 
     return tx;

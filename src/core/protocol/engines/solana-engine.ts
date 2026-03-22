@@ -72,51 +72,80 @@ import {
   TOKEN_2022_PROGRAM_ADDRESS,
 } from "./constants";
 import type {
-  CallParams,
-  EngineConfig,
-  MessageCall,
-  MessageTransfer,
-  MessageTransferSol,
-  MessageTransferSpl,
-  MessageTransferWrappedToken,
-  Rpc,
-} from "./types";
+  BridgeBaseToSolanaStateIncomingMessageMessage,
+  BridgeBaseToSolanaStateIncomingMessageTransfer,
+} from "../../../clients/ts/src/bridge";
+import type { EvmCall } from "../../types";
+
+interface SolanaEngineConfig {
+  rpcUrl: string;
+  payer: KeyPairSigner;
+  bridgeProgram: SolAddress;
+  relayerProgram: SolAddress;
+}
+
+type Rpc = ReturnType<typeof createSolanaRpc>;
+
+type MessageCall = Extract<
+  BridgeBaseToSolanaStateIncomingMessageMessage,
+  { __kind: "Call" }
+>;
+
+type MessageTransfer = Extract<
+  BridgeBaseToSolanaStateIncomingMessageMessage,
+  { __kind: "Transfer" }
+>;
+
+type MessageTransferSol = Extract<
+  BridgeBaseToSolanaStateIncomingMessageTransfer,
+  { __kind: "Sol" }
+>;
+
+type MessageTransferSpl = Extract<
+  BridgeBaseToSolanaStateIncomingMessageTransfer,
+  { __kind: "Spl" }
+>;
+
+type MessageTransferWrappedToken = Extract<
+  BridgeBaseToSolanaStateIncomingMessageTransfer,
+  { __kind: "WrappedToken" }
+>;
 
 interface BridgeOpResult {
   outgoingPda: SolAddress;
   signature: Signature;
 }
 
-export interface SolanaEngineOpts {
-  config: EngineConfig;
+interface SolanaEngineOpts {
+  config: SolanaEngineConfig;
 }
 
-export interface BridgeSolOpts {
+interface BridgeSolOpts {
   to: Address;
   amount: bigint;
   payForRelay?: boolean;
-  call?: CallParams;
+  call?: EvmCall;
   gasLimit?: bigint;
   idempotencyKey?: string;
 }
 
-export interface BridgeSplOpts {
+interface BridgeSplOpts {
   to: Address;
   mint: string;
   remoteToken: string;
   amount: bigint;
   payForRelay?: boolean;
-  call?: CallParams;
+  call?: EvmCall;
   gasLimit?: bigint;
   idempotencyKey?: string;
 }
 
-export interface BridgeWrappedOpts {
+interface BridgeWrappedOpts {
   to: Address;
   mint: string;
   amount: bigint;
   payForRelay?: boolean;
-  call?: CallParams;
+  call?: EvmCall;
   gasLimit?: bigint;
   idempotencyKey?: string;
 }
@@ -128,13 +157,13 @@ interface FormattedCall {
   data: Buffer;
 }
 
-export interface BridgeCallOpts extends CallParams {
+interface BridgeCallOpts extends EvmCall {
   payForRelay?: boolean;
   gasLimit?: bigint;
   idempotencyKey?: string;
 }
 
-export interface WrapTokenOpts {
+interface WrapTokenOpts {
   remoteToken: string;
   name: string;
   symbol: string;
@@ -145,7 +174,7 @@ export interface WrapTokenOpts {
 }
 
 export class SolanaEngine {
-  private readonly config: EngineConfig;
+  private readonly config: SolanaEngineConfig;
   private readonly rpc: Rpc;
   private readonly sendAndConfirmTx: ReturnType<
     typeof sendAndConfirmTransactionFactory
@@ -154,9 +183,9 @@ export class SolanaEngine {
 
   constructor(opts: SolanaEngineOpts) {
     this.config = opts.config;
-    this.rpc = createSolanaRpc(this.config.solana.rpcUrl);
+    this.rpc = createSolanaRpc(this.config.rpcUrl);
 
-    const url = new URL(this.config.solana.rpcUrl);
+    const url = new URL(this.config.rpcUrl);
     const wsScheme = url.protocol === "http:" ? "ws" : "wss";
     const wssUrl = `${wsScheme}://${url.host}${url.pathname}${url.search}`;
     const rpcSubscriptions = createSolanaRpcSubscriptions(wssUrl);
@@ -169,7 +198,7 @@ export class SolanaEngine {
   private getBridgePda(): Promise<SolAddress> {
     if (!this.bridgePdaPromise) {
       this.bridgePdaPromise = getProgramDerivedAddress({
-        programAddress: this.config.solana.bridgeProgram,
+        programAddress: this.config.bridgeProgram,
         seeds: [Buffer.from(getIdlConstant("BRIDGE_SEED"))],
       }).then(([addr]) => addr);
     }
@@ -216,7 +245,7 @@ export class SolanaEngine {
     const bridgeAddress = await this.getBridgePda();
 
     const [cfgAddress] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.relayerProgram,
+      programAddress: this.config.relayerProgram,
       seeds: [Buffer.from(getRelayerIdlConstant("CFG_SEED"))],
     });
 
@@ -265,7 +294,7 @@ export class SolanaEngine {
 
     // We need a fee payer for simulation - use the bridge program as a dummy
     // since we're using replaceRecentBlockhash which skips signature verification
-    const feePayer = this.config.solana.bridgeProgram;
+    const feePayer = this.config.bridgeProgram;
 
     // Build the transaction message
     const txMessage = pipe(
@@ -328,7 +357,7 @@ export class SolanaEngine {
               amount: opts.amount,
               call: this.formatCall(opts.call),
             },
-            { programAddress: this.config.solana.bridgeProgram },
+            { programAddress: this.config.bridgeProgram },
           ),
         ];
       },
@@ -348,7 +377,7 @@ export class SolanaEngine {
         const mintBytes = getBase58Encoder().encode(mint);
 
         const [tokenVaultAddress] = await getProgramDerivedAddress({
-          programAddress: this.config.solana.bridgeProgram,
+          programAddress: this.config.bridgeProgram,
           seeds: [
             Buffer.from(getIdlConstant("TOKEN_VAULT_SEED")),
             mintBytes,
@@ -376,7 +405,7 @@ export class SolanaEngine {
               amount,
               call: this.formatCall(opts.call),
             },
-            { programAddress: this.config.solana.bridgeProgram },
+            { programAddress: this.config.bridgeProgram },
           ),
         ];
       },
@@ -410,7 +439,7 @@ export class SolanaEngine {
               amount,
               call: this.formatCall(opts.call),
             },
-            { programAddress: this.config.solana.bridgeProgram },
+            { programAddress: this.config.bridgeProgram },
           ),
         ];
       },
@@ -436,7 +465,7 @@ export class SolanaEngine {
               outgoingMessageSalt: salt,
               call: this.formatCall(opts),
             },
-            { programAddress: this.config.solana.bridgeProgram },
+            { programAddress: this.config.bridgeProgram },
           ),
         ];
       },
@@ -485,7 +514,7 @@ export class SolanaEngine {
         );
 
         const [mintAddress] = await getProgramDerivedAddress({
-          programAddress: this.config.solana.bridgeProgram,
+          programAddress: this.config.bridgeProgram,
           seeds: [
             Buffer.from(getIdlConstant("WRAPPED_TOKEN_SEED")),
             decimalsSeed,
@@ -506,7 +535,7 @@ export class SolanaEngine {
 
               ...instructionArgs,
             },
-            { programAddress: this.config.solana.bridgeProgram },
+            { programAddress: this.config.bridgeProgram },
           ),
         ];
       },
@@ -534,20 +563,20 @@ export class SolanaEngine {
     rawProof: readonly `0x${string}`[],
     blockNumber: bigint,
   ): Promise<{ signature?: Signature; messageHash: Hash }> {
-    const payer = this.config.solana.payer;
+    const payer = this.config.payer;
 
     const [bridgeAddress, [outputRootAddress], messageAddress] =
       await Promise.all([
         this.getBridgePda(),
         getProgramDerivedAddress({
-          programAddress: this.config.solana.bridgeProgram,
+          programAddress: this.config.bridgeProgram,
           seeds: [
             Buffer.from(getIdlConstant("OUTPUT_ROOT_SEED")),
             getU64Encoder({ endian: Endian.Little }).encode(blockNumber),
           ],
         }),
         deriveIncomingMessagePda(
-          this.config.solana.bridgeProgram,
+          this.config.bridgeProgram,
           event.messageHash,
         ),
       ]);
@@ -574,7 +603,7 @@ export class SolanaEngine {
         proof: rawProof.map((e: string) => toBytes(e)),
         messageHash: toBytes(event.messageHash),
       },
-      { programAddress: this.config.solana.bridgeProgram },
+      { programAddress: this.config.bridgeProgram },
     );
 
     const signature = await this.buildAndSendTransaction([ix], payer);
@@ -582,10 +611,10 @@ export class SolanaEngine {
   }
 
   async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
-    const payer = this.config.solana.payer;
+    const payer = this.config.payer;
 
     const messagePda = await deriveIncomingMessagePda(
-      this.config.solana.bridgeProgram,
+      this.config.bridgeProgram,
       messageHash,
     );
 
@@ -609,7 +638,7 @@ export class SolanaEngine {
     }
 
     const [bridgeCpiAuthorityPda] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
+      programAddress: this.config.bridgeProgram,
       seeds: [
         Buffer.from(getIdlConstant("BRIDGE_CPI_AUTHORITY_SEED")),
         Buffer.from(incomingMessage.data.sender),
@@ -624,7 +653,7 @@ export class SolanaEngine {
         : await this.messageTransferAccounts(
             this.rpc,
             message,
-            this.config.solana.bridgeProgram,
+            this.config.bridgeProgram,
           );
 
     remainingAccounts = remainingAccounts.map((acct) => {
@@ -644,7 +673,7 @@ export class SolanaEngine {
 
     const relayMessageIx = getRelayMessageInstruction(
       { message: messagePda, bridge: bridgeAccountAddress },
-      { programAddress: this.config.solana.bridgeProgram },
+      { programAddress: this.config.bridgeProgram },
     );
 
     const relayMessageIxWithRemainingAccounts: Instruction = {
@@ -785,9 +814,9 @@ export class SolanaEngine {
     return allIxsAccounts;
   }
 
-  private formatCall(call: CallParams): FormattedCall;
-  private formatCall(call?: CallParams): FormattedCall | null;
-  private formatCall(call?: CallParams): FormattedCall | null {
+  private formatCall(call: EvmCall): FormattedCall;
+  private formatCall(call?: EvmCall): FormattedCall | null;
+  private formatCall(call?: EvmCall): FormattedCall | null {
     if (!call) return null;
 
     const callData = call.data.startsWith("0x")
@@ -826,7 +855,7 @@ export class SolanaEngine {
   }
 
   private async setupMessage(idempotencyKey?: string) {
-    const payer = this.config.solana.payer;
+    const payer = this.config.payer;
 
     const bridgeAccountAddress = await this.getBridgePda();
 
@@ -882,7 +911,7 @@ export class SolanaEngine {
 
   private async solVaultPubkey() {
     const [pubkey] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
+      programAddress: this.config.bridgeProgram,
       seeds: [Buffer.from(getIdlConstant("SOL_VAULT_SEED"))],
     });
 
@@ -896,7 +925,7 @@ export class SolanaEngine {
         : crypto.getRandomValues(new Uint8Array(32));
 
     const [pubkey] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.bridgeProgram,
+      programAddress: this.config.bridgeProgram,
       seeds: [
         Buffer.from(getIdlConstant("OUTGOING_MESSAGE_SEED")),
         Buffer.from(salt),
@@ -940,14 +969,14 @@ export class SolanaEngine {
     gasLimit?: bigint,
   ) {
     const [cfgAddress] = await getProgramDerivedAddress({
-      programAddress: this.config.solana.relayerProgram,
+      programAddress: this.config.relayerProgram,
       seeds: [Buffer.from(getRelayerIdlConstant("CFG_SEED"))],
     });
 
     const cfg = await fetchCfg(this.rpc, cfgAddress);
 
     const { salt, pubkey: messageToRelay } = await this.mtrPubkey(
-      this.config.solana.relayerProgram,
+      this.config.relayerProgram,
     );
 
     return getPayForRelayInstruction(
@@ -962,7 +991,7 @@ export class SolanaEngine {
         outgoingMessage: outgoingMessage,
         gasLimit: gasLimit ?? DEFAULT_RELAY_GAS_LIMIT,
       },
-      { programAddress: this.config.solana.relayerProgram },
+      { programAddress: this.config.relayerProgram },
     );
   }
 

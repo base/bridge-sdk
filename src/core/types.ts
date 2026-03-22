@@ -1,3 +1,5 @@
+import type { Address as SolAddress } from "@solana/kit";
+import type { Hex } from "viem";
 import type { Logger } from "../utils/logger";
 
 /**
@@ -360,6 +362,30 @@ export interface RouteAdapter {
     ref: MessageRef,
     opts?: MonitorOptions,
   ): AsyncIterable<ExecutionStatus>;
+}
+
+export interface BridgeConfig {
+  /**
+   * On-chain addresses per chain.
+   *
+   * v1 supports Solana <-> EVM routes only for this bridge.
+   */
+  deployments: {
+    solana: Record<
+      ChainId,
+      { bridgeProgram: SolAddress; relayerProgram: SolAddress }
+    >;
+    base: Record<ChainId, { bridgeContract: Hex }>;
+  };
+
+  /**
+   * Token identifier mapping across chains when the bridge needs both
+   * "local" and "remote" ids.
+   *
+   * Key format: `${sourceChain}->${destinationChain}`.
+   * Value maps source token id (mint for Solana, ERC20 for EVM) -> destination token id.
+   */
+  tokenMappings?: Record<string, Record<string, string>>;
 }
 
 export type { Logger };

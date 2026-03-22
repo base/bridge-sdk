@@ -40,7 +40,6 @@ import { isSolanaDestinationCall } from "../../utils";
 import { BaseEngine } from "../engines/base-engine";
 import { SOLANA_BASE_TX_FEE } from "../engines/constants";
 import { SolanaEngine } from "../engines/solana-engine";
-import type { EngineConfig } from "../engines/types";
 import { decodeMessageInitiatedEvents } from "../events";
 import { deriveIncomingMessagePda } from "../pda";
 
@@ -111,23 +110,22 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     this.evmDeployment = args.evmDeployment;
     this.tokenMapping = args.tokenMapping;
 
-    const engineConfig: EngineConfig = {
-      solana: {
+    this.solanaEngine = new SolanaEngine({
+      config: {
         rpcUrl: this.solana.rpcUrl,
         payer: this.solana.payer,
         bridgeProgram: this.solanaDeployment.bridgeProgram,
         relayerProgram: this.solanaDeployment.relayerProgram,
       },
-      base: {
+    });
+    this.baseEngine = new BaseEngine({
+      config: {
         rpcUrl: this.evm.rpcUrl,
         bridgeContract: this.evmDeployment.bridgeContract,
         chain: this.evm.viemChain,
         privateKey: this.evm.privateKey,
       },
-    };
-
-    this.solanaEngine = new SolanaEngine({ config: engineConfig });
-    this.baseEngine = new BaseEngine({ config: engineConfig });
+    });
     this.solanaRpc = createSolanaRpc(this.solana.rpcUrl);
   }
 

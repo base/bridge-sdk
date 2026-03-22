@@ -1,4 +1,4 @@
-export interface BackoffOptions {
+interface BackoffOptions {
   initialMs: number;
   maxMs: number;
   factor: number;

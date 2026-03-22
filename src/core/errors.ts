@@ -34,7 +34,7 @@ export class BridgeError extends Error {
   }
 }
 
-export type BridgeErrorCode =
+type BridgeErrorCode =
   | "UNSUPPORTED_ROUTE"
   | "UNSUPPORTED_ACTION"
   | "UNSUPPORTED_STEP"
@@ -51,7 +51,7 @@ export type BridgeErrorCode =
   | "MESSAGE_FAILED"
   | "INVARIANT_VIOLATION";
 
-export type ActionableOutcome = "retry" | "user_fix" | "fatal";
+type ActionableOutcome = "retry" | "user_fix" | "fatal";
 
 export class BridgeUnsupportedRouteError extends BridgeError {
   constructor(route: BridgeRoute, cause?: unknown) {

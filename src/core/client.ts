@@ -2,12 +2,12 @@ import { type Logger, NOOP_LOGGER } from "../utils/logger";
 import { BridgeUnsupportedRouteError } from "./errors";
 import { mergeBridgeDeployments } from "./protocol/deployments";
 import {
-  type BridgeConfig,
   resolveBridgeRoute,
   routeMapKey,
   supportsBridgeRoute,
 } from "./protocol/router";
 import type {
+  BridgeConfig,
   BridgeOperation,
   BridgeRequest,
   BridgeRoute,
