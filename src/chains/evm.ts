@@ -1,14 +1,8 @@
 import type { Chain } from "viem";
 import { base as viemBase, baseSepolia as viemBaseSepolia } from "viem/chains";
-import type { ChainRef } from "../core/types";
+import type { BridgeEvmChainRef } from "../adapters/chains/evm/types";
 
-type BridgeEvmChain = ChainRef & {
-  /** Canonical chain id used by this SDK (CAIP-2 style). */
-  id: `eip155:${number}`;
-  /** Numeric EVM chain id (e.g. 8453). */
-  chainId: number;
-  /** viem Chain object for clients/wallets. */
-  viem: Chain;
+type BridgeEvmChain = BridgeEvmChainRef & {
   /** Human name (required for EVM chains). */
   name: string;
   /** Whether this is a testnet. */

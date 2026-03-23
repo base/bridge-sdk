@@ -1,4 +1,11 @@
-import type { Chain, Hash, Hex, PublicClient, WalletClient } from "viem";
+import type {
+  Chain,
+  Hash,
+  Hex,
+  PublicClient,
+  TransactionReceipt,
+  WalletClient,
+} from "viem";
 import type { ChainAdapter, ChainRef } from "../../../core/types";
 
 export type EvmWalletConfig =
@@ -11,28 +18,29 @@ export type BridgeEvmChainRef = {
   viem: Chain;
 };
 
-export type EvmAdapterConfig =
-  | {
-      /** EVM chain id (e.g. 8453). */
-      chainId: number;
-      chain?: undefined;
-      rpcUrl: string;
-      wallet?: EvmWalletConfig;
-    }
-  | {
-      /** Bridge SDK chain object (e.g. `import { base } from "bridge-sdk/chains"`). */
-      chain: BridgeEvmChainRef;
-      chainId?: undefined;
-      rpcUrl: string;
-      wallet?: EvmWalletConfig;
-    }
-  | {
-      /** viem chain object (e.g. `import { base } from "viem/chains"`). */
-      chain: Chain;
-      chainId?: undefined;
-      rpcUrl: string;
-      wallet?: EvmWalletConfig;
-    };
+type EvmAdapterConfigBase = {
+  rpcUrl: string;
+  wallet?: EvmWalletConfig;
+};
+
+export type EvmAdapterConfig = EvmAdapterConfigBase &
+  (
+    | {
+        /** EVM chain id (e.g. 8453). */
+        chainId: number;
+        chain?: undefined;
+      }
+    | {
+        /** Bridge SDK chain object (e.g. `import { base } from "bridge-sdk/chains"`). */
+        chain: BridgeEvmChainRef;
+        chainId?: undefined;
+      }
+    | {
+        /** viem chain object (e.g. `import { base } from "viem/chains"`). */
+        chain: Chain;
+        chainId?: undefined;
+      }
+  );
 
 export interface EvmChainAdapter extends ChainAdapter {
   readonly chain: ChainRef;
@@ -46,7 +54,5 @@ export interface EvmChainAdapter extends ChainAdapter {
   readonly privateKey?: Hex;
 
   /** Convenience reads */
-  getTransactionReceipt(
-    hash: Hash,
-  ): Promise<Awaited<ReturnType<PublicClient["getTransactionReceipt"]>>>;
+  getTransactionReceipt(hash: Hash): Promise<TransactionReceipt>;
 }
