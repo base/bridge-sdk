@@ -40,7 +40,10 @@ function resolveChain(config: EvmAdapterConfig): {
   viemChain: Chain;
 } {
   if (config.chain == null) {
-    return { chainId: config.chainId, viemChain: makeViemChain(config.chainId) };
+    return {
+      chainId: config.chainId,
+      viemChain: makeViemChain(config.chainId),
+    };
   }
   if (isBridgeEvmChainRef(config.chain)) {
     return { chainId: config.chain.chainId, viemChain: config.chain.viem };
