@@ -7,7 +7,7 @@ import {
   fetchOutgoingMessage,
   type OutgoingMessage,
 } from "../../../clients/ts/src/bridge";
-import type { ChainRef } from "../../../core/types";
+import { solanaMainnet } from "../../../chains/solana";
 import type { SolanaAdapterConfig, SolanaChainAdapter } from "./types";
 
 /**
@@ -29,7 +29,7 @@ export function makeSolanaAdapter(
   config: SolanaAdapterConfig,
 ): SolanaChainAdapter {
   const payer = config.payer;
-  const chain: ChainRef = config.chain ?? { id: "solana:mainnet" };
+  const chain = config.chain ?? solanaMainnet;
   const rpc = createSolanaRpc(config.rpcUrl);
 
   return {
