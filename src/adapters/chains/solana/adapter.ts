@@ -3,11 +3,11 @@ import {
   createSolanaRpc,
   type Address as SolAddress,
 } from "@solana/kit";
+import { solanaMainnet } from "../../../chains/solana";
 import {
   fetchOutgoingMessage,
   type OutgoingMessage,
 } from "../../../clients/ts/src/bridge";
-import { solanaMainnet } from "../../../chains/solana";
 import type { SolanaAdapterConfig, SolanaChainAdapter } from "./types";
 
 /**
