@@ -6,11 +6,9 @@ import type {
 import type { OutgoingMessage } from "../../../clients/ts/src/bridge";
 import type { ChainAdapter, ChainRef } from "../../../core/types";
 
-export type SolanaPayerConfig = { type: "signer"; signer: KeyPairSigner };
-
 export interface SolanaAdapterConfig {
   rpcUrl: string;
-  payer: SolanaPayerConfig;
+  payer: KeyPairSigner;
   /** Optional label for chain ref. */
   chain?: ChainRef;
 }

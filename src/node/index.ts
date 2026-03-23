@@ -27,7 +27,7 @@ function expandHome(path: string): string {
  * const payer = await loadSolanaKeypair("~/.config/solana/id.json");
  * const adapter = makeSolanaAdapter({
  *   rpcUrl: "https://api.mainnet-beta.solana.com",
- *   payer: { type: "signer", signer: payer },
+ *   payer,
  * });
  */
 export async function loadSolanaKeypair(path: string): Promise<KeyPairSigner> {

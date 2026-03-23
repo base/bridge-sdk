@@ -12,7 +12,7 @@ async function main() {
     chains: {
       solana: makeSolanaAdapter({
         rpcUrl: "https://api.mainnet-beta.solana.com",
-        payer: { type: "signer", signer: payer },
+        payer,
         chain: solanaMainnet,
       }),
       base: makeEvmAdapter({

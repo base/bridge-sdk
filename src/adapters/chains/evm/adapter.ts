@@ -10,7 +10,11 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { ChainRef } from "../../../core/types";
-import type { EvmAdapterConfig, EvmChainAdapter } from "./types";
+import type {
+  BridgeEvmChainRef,
+  EvmAdapterConfig,
+  EvmChainAdapter,
+} from "./types";
 
 function makeViemChain(chainId: number): Chain {
   // Minimal viem Chain object; callers can still override behavior via RPC.
@@ -22,43 +26,52 @@ function makeViemChain(chainId: number): Chain {
   } as const as Chain;
 }
 
-function hasViemChain(
-  config: EvmAdapterConfig,
-): config is Extract<EvmAdapterConfig, { chain: unknown }> {
-  return "chain" in config && config.chain != null;
+function isBridgeEvmChainRef(chain: unknown): chain is BridgeEvmChainRef {
+  return (
+    typeof chain === "object" &&
+    chain !== null &&
+    "viem" in chain &&
+    "chainId" in chain
+  );
+}
+
+function resolveChain(config: EvmAdapterConfig): {
+  chainId: number;
+  viemChain: Chain;
+} {
+  if (config.chain == null) {
+    return { chainId: config.chainId, viemChain: makeViemChain(config.chainId) };
+  }
+  if (isBridgeEvmChainRef(config.chain)) {
+    return { chainId: config.chain.chainId, viemChain: config.chain.viem };
+  }
+  // Plain viem Chain
+  return { chainId: config.chain.id, viemChain: config.chain };
 }
 
 export function makeEvmAdapter(config: EvmAdapterConfig): EvmChainAdapter {
-  const chainId = hasViemChain(config)
-    ? typeof (config.chain as Record<string, unknown>).chainId === "number"
-      ? ((config.chain as Record<string, unknown>).chainId as number)
-      : ((config.chain as Record<string, unknown>).id as number)
-    : config.chainId;
+  const { chainId, viemChain } = resolveChain(config);
   const chain: ChainRef = { id: `eip155:${chainId}` };
-  const viemChain = hasViemChain(config)
-    ? (((config.chain as Record<string, unknown>).viem ??
-        config.chain) as Chain)
-    : makeViemChain(chainId);
+
+  const transport = http(config.rpcUrl);
 
   const publicClient = createPublicClient({
     chain: viemChain,
-    transport: http(config.rpcUrl),
+    transport,
   }) as PublicClient;
 
   let walletClient: WalletClient | undefined;
-  let hasSigner = false;
   let privateKey: Hex | undefined;
 
   const wallet = config.wallet ?? { type: "none" as const };
   if (wallet.type === "privateKey") {
-    const account = privateKeyToAccount(wallet.key as Hex);
+    const account = privateKeyToAccount(wallet.key);
     walletClient = createWalletClient({
       chain: viemChain,
-      transport: http(config.rpcUrl),
+      transport,
       account,
     }) as WalletClient;
-    hasSigner = true;
-    privateKey = wallet.key as Hex;
+    privateKey = wallet.key;
   }
 
   return {
@@ -69,7 +82,6 @@ export function makeEvmAdapter(config: EvmAdapterConfig): EvmChainAdapter {
     viemChain,
     publicClient,
     walletClient,
-    hasSigner,
     privateKey,
     async ping() {
       await publicClient.getBlockNumber();

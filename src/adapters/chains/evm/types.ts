@@ -42,7 +42,6 @@ export interface EvmChainAdapter extends ChainAdapter {
   readonly viemChain: Chain;
   readonly publicClient: PublicClient;
   readonly walletClient?: WalletClient;
-  readonly hasSigner: boolean;
   /** Present only when wallet.type === "privateKey". */
   readonly privateKey?: Hex;
 

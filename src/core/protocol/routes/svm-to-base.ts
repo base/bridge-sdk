@@ -126,7 +126,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     return {
       steps: ["initiate", "execute", "monitor"],
       autoRelay: true,
-      manualExecute: this.evm.hasSigner,
+      manualExecute: this.evm.privateKey !== undefined,
       prove: false,
       supportsQuote: true,
     };

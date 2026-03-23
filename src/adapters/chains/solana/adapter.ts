@@ -22,13 +22,13 @@ import type { SolanaAdapterConfig, SolanaChainAdapter } from "./types";
  * const payer = await loadSolanaKeypair("~/.config/solana/id.json");
  * const adapter = makeSolanaAdapter({
  *   rpcUrl: "https://api.mainnet-beta.solana.com",
- *   payer: { type: "signer", signer: payer },
+ *   payer,
  * });
  */
 export function makeSolanaAdapter(
   config: SolanaAdapterConfig,
 ): SolanaChainAdapter {
-  const payer = config.payer.signer;
+  const payer = config.payer;
   const chain: ChainRef = config.chain ?? { id: "solana:mainnet" };
   const rpc = createSolanaRpc(config.rpcUrl);
 
