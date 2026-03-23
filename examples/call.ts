@@ -39,8 +39,11 @@ async function main() {
     relay: { mode: "auto" },
   });
 
-  const final = await client.status(op.messageRef);
-  console.log(final);
+  // relay: "auto" means the relayer handles prove/execute in the background.
+  // Monitor until a terminal state (Executed/Failed/Expired) or timeout.
+  for await (const s of client.monitor(op.messageRef, { timeoutMs: 60_000 })) {
+    console.log(s.type, s.at);
+  }
 }
 
 main().catch((e) => {

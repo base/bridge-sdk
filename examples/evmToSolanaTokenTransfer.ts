@@ -45,9 +45,11 @@ async function main() {
     recipient: "11111111111111111111111111111111",
   });
 
-  // Prove then execute if needed.
-  await client.prove(op.messageRef);
-  await client.execute(op.messageRef);
+  const proveResult = await client.prove(op.messageRef);
+  console.log("Message proven:", proveResult.proofTx);
+
+  const execResult = await client.execute(op.messageRef);
+  console.log("Message executed:", execResult.executionTx);
 }
 
 main().catch((e) => {
