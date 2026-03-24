@@ -34,7 +34,7 @@ export class BridgeError extends Error {
   }
 }
 
-type BridgeErrorCode =
+export type BridgeErrorCode =
   | "UNSUPPORTED_ROUTE"
   | "UNSUPPORTED_ACTION"
   | "UNSUPPORTED_STEP"
@@ -49,9 +49,10 @@ type BridgeErrorCode =
   | "ALREADY_EXECUTED"
   | "EXECUTION_REVERTED"
   | "MESSAGE_FAILED"
-  | "INVARIANT_VIOLATION";
+  | "INVARIANT_VIOLATION"
+  | "VALIDATION";
 
-type ActionableOutcome = "retry" | "user_fix" | "fatal";
+export type ActionableOutcome = "retry" | "user_fix" | "fatal";
 
 export class BridgeUnsupportedRouteError extends BridgeError {
   constructor(route: BridgeRoute, cause?: unknown) {
@@ -190,6 +191,22 @@ export class BridgeInvariantViolationError extends BridgeError {
       stage: args?.stage ?? "initiate",
       route: args?.route,
       chain: args?.chain,
+      cause: args?.cause,
+    });
+  }
+}
+
+export class BridgeValidationError extends BridgeError {
+  constructor(
+    message: string,
+    args?: { route?: BridgeRoute; cause?: unknown },
+  ) {
+    super({
+      message,
+      code: "VALIDATION",
+      outcome: "user_fix",
+      stage: "initiate",
+      route: args?.route,
       cause: args?.cause,
     });
   }

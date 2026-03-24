@@ -30,6 +30,7 @@ import type {
   TransferRequestInput,
 } from "./types";
 import { validateDestinationCall } from "./utils";
+import { validateAction } from "./validation";
 
 export interface BridgeClientConfig {
   /** Registered chains and their adapters. */
@@ -135,6 +136,7 @@ class DefaultBridgeClient implements BridgeClient {
   }
 
   async request(req: BridgeRequest): Promise<BridgeOperation> {
+    validateAction(req.action);
     const adapter = await this.getRouteAdapter(req.route);
     this.logger.debug(
       `bridge.request: initiating ${req.route.sourceChain} -> ${req.route.destinationChain}`,
@@ -143,6 +145,7 @@ class DefaultBridgeClient implements BridgeClient {
   }
 
   async quote(req: QuoteRequest): Promise<Quote> {
+    validateAction(req.action);
     const adapter = await this.getRouteAdapter(req.route);
     this.logger.debug(
       `bridge.quote: estimating ${req.route.sourceChain} -> ${req.route.destinationChain}`,
