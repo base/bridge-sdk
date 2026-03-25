@@ -169,6 +169,13 @@ export interface BridgeOperation {
    * Examples: Solana signature, EVM tx hash.
    */
   initiationTx?: string;
+  /**
+   * Additional transaction signatures when the initiation required multiple
+   * transactions (e.g., call buffer setup for large payloads on Solana).
+   * Ordered chronologically: buffer init, then appends.
+   * The final bridge tx is in {@link initiationTx}.
+   */
+  auxiliaryTxs?: string[];
 }
 
 /**

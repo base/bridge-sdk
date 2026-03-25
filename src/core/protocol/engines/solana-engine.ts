@@ -12,6 +12,7 @@ import {
   createSolanaRpcSubscriptions,
   createTransactionMessage,
   Endian,
+  generateKeyPairSigner,
   getBase58Codec,
   getBase58Encoder,
   getBase64EncodedWireTransaction,
@@ -52,10 +53,17 @@ import {
   fetchMaybeIncomingMessage,
   fetchMaybeOutgoingMessage,
   fetchOutgoingMessage,
+  getAppendToCallBufferInstruction,
+  getBridgeCallBufferedInstruction,
   getBridgeCallInstruction,
   getBridgeSolInstruction,
+  getBridgeSolWithBufferedCallInstruction,
   getBridgeSplInstruction,
+  getBridgeSplWithBufferedCallInstruction,
   getBridgeWrappedTokenInstruction,
+  getBridgeWrappedTokenWithBufferedCallInstruction,
+  getCloseCallBufferInstruction,
+  getInitializeCallBufferInstruction,
   getProveMessageInstruction,
   getRelayMessageInstruction,
   getWrapTokenInstruction,
@@ -117,6 +125,53 @@ type MessageTransferWrappedToken = Extract<
 interface BridgeOpResult {
   outgoingPda: SolAddress;
   signature: Signature;
+}
+
+interface InitCallBufferResult {
+  bufferAddress: SolAddress;
+  signature: Signature;
+}
+
+interface InitializeCallBufferOpts {
+  callType: CallType;
+  to: Uint8Array;
+  value: bigint;
+  initialData: Uint8Array;
+  maxDataLen: bigint;
+}
+
+interface AppendToCallBufferOpts {
+  bufferAddress: SolAddress;
+  data: Uint8Array;
+}
+
+interface CloseCallBufferOpts {
+  bufferAddress: SolAddress;
+}
+
+interface BufferedBridgeCallOpts {
+  bufferAddress: SolAddress;
+  payForRelay?: boolean;
+  gasLimit?: bigint;
+  idempotencyKey?: string;
+}
+
+interface BufferedBridgeSolOpts extends BufferedBridgeCallOpts {
+  to: Address;
+  amount: bigint;
+}
+
+interface BufferedBridgeSplOpts extends BufferedBridgeCallOpts {
+  to: Address;
+  mint: string;
+  remoteToken: string;
+  amount: bigint;
+}
+
+interface BufferedBridgeWrappedOpts extends BufferedBridgeCallOpts {
+  to: Address;
+  mint: string;
+  amount: bigint;
 }
 
 interface SolanaEngineOpts {
@@ -785,6 +840,257 @@ export class SolanaEngine {
     return allIxsAccounts;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Call buffer lifecycle methods
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Creates a new call buffer account to hold large call data that exceeds
+   * Solana's single-transaction size limit.
+   *
+   * The payer becomes the buffer owner and is the only account authorized
+   * to append, close, or consume the buffer.
+   */
+  async initializeCallBuffer(
+    opts: InitializeCallBufferOpts,
+  ): Promise<InitCallBufferResult> {
+    const callBufferKeypair = await generateKeyPairSigner();
+    const bridgeAddress = await this.getBridgePda();
+
+    const ix = getInitializeCallBufferInstruction(
+      {
+        payer: this.config.payer,
+        bridge: bridgeAddress,
+        callBuffer: callBufferKeypair,
+        systemProgram: SYSTEM_PROGRAM_ADDRESS,
+        ty: opts.callType,
+        to: opts.to,
+        value: opts.value,
+        initialData: opts.initialData,
+        maxDataLen: opts.maxDataLen,
+      },
+      { programAddress: this.config.bridgeProgram },
+    );
+
+    const signature = await this.buildAndSendTransaction(
+      [ix],
+      this.config.payer,
+      [callBufferKeypair],
+    );
+
+    return { bufferAddress: callBufferKeypair.address, signature };
+  }
+
+  /**
+   * Appends data to an existing call buffer. Can be called multiple times
+   * to fill the buffer in chunks that each fit within a single transaction.
+   */
+  async appendToCallBuffer(
+    opts: AppendToCallBufferOpts,
+  ): Promise<{ signature: Signature }> {
+    const ix = getAppendToCallBufferInstruction(
+      {
+        owner: this.config.payer,
+        callBuffer: opts.bufferAddress,
+        data: opts.data,
+      },
+      { programAddress: this.config.bridgeProgram },
+    );
+
+    const signature = await this.buildAndSendTransaction(
+      [ix],
+      this.config.payer,
+    );
+    return { signature };
+  }
+
+  /**
+   * Closes a call buffer account and recovers the rent to the owner.
+   * Use this to clean up if the bridge operation is aborted.
+   */
+  async closeCallBuffer(
+    opts: CloseCallBufferOpts,
+  ): Promise<{ signature: Signature }> {
+    const ix = getCloseCallBufferInstruction(
+      {
+        owner: this.config.payer,
+        callBuffer: opts.bufferAddress,
+      },
+      { programAddress: this.config.bridgeProgram },
+    );
+
+    const signature = await this.buildAndSendTransaction(
+      [ix],
+      this.config.payer,
+    );
+    return { signature };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Buffered bridge methods
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Bridges a call to Base using call data from a pre-filled call buffer.
+   * The call buffer is consumed (closed) by this operation.
+   */
+  async bridgeCallBuffered(
+    opts: BufferedBridgeCallOpts,
+  ): Promise<BridgeOpResult> {
+    return await this.executeBridgeOp(
+      opts.payForRelay,
+      opts.gasLimit,
+      async ({ payer, bridge, outgoingMessage, salt }) => [
+        getBridgeCallBufferedInstruction(
+          {
+            payer,
+            from: payer,
+            gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+            bridge: bridge.address,
+            owner: payer,
+            callBuffer: opts.bufferAddress,
+            outgoingMessage,
+            systemProgram: SYSTEM_PROGRAM_ADDRESS,
+            outgoingMessageSalt: salt,
+          },
+          { programAddress: this.config.bridgeProgram },
+        ),
+      ],
+      opts.idempotencyKey,
+    );
+  }
+
+  /**
+   * Bridges SOL to Base with a call whose data comes from a pre-filled
+   * call buffer. The call buffer is consumed (closed) by this operation.
+   */
+  async bridgeSolWithBufferedCall(
+    opts: BufferedBridgeSolOpts,
+  ): Promise<BridgeOpResult> {
+    return await this.executeBridgeOp(
+      opts.payForRelay,
+      opts.gasLimit,
+      async ({ payer, bridge, outgoingMessage, salt }) => {
+        const solVaultAddress = await this.solVaultPubkey();
+        return [
+          getBridgeSolWithBufferedCallInstruction(
+            {
+              payer,
+              from: payer,
+              gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+              solVault: solVaultAddress,
+              bridge: bridge.address,
+              owner: payer,
+              callBuffer: opts.bufferAddress,
+              outgoingMessage,
+              systemProgram: SYSTEM_PROGRAM_ADDRESS,
+              outgoingMessageSalt: salt,
+              to: toBytes(opts.to),
+              amount: opts.amount,
+            },
+            { programAddress: this.config.bridgeProgram },
+          ),
+        ];
+      },
+      opts.idempotencyKey,
+    );
+  }
+
+  /**
+   * Bridges SPL tokens to Base with a call whose data comes from a pre-filled
+   * call buffer. The call buffer is consumed (closed) by this operation.
+   */
+  async bridgeSplWithBufferedCall(
+    opts: BufferedBridgeSplOpts,
+  ): Promise<BridgeOpResult> {
+    return await this.executeBridgeOp(
+      opts.payForRelay,
+      opts.gasLimit,
+      async ({ payer, bridge, outgoingMessage, salt }) => {
+        const { mint, fromTokenAccount, amount, tokenProgram } =
+          await this.setupSpl(opts, payer);
+
+        const remoteTokenBytes = toBytes(opts.remoteToken);
+        const mintBytes = getBase58Encoder().encode(mint);
+
+        const [tokenVaultAddress] = await getProgramDerivedAddress({
+          programAddress: this.config.bridgeProgram,
+          seeds: [
+            Buffer.from(getIdlConstant("TOKEN_VAULT_SEED")),
+            mintBytes,
+            Buffer.from(remoteTokenBytes),
+          ],
+        });
+
+        return [
+          getBridgeSplWithBufferedCallInstruction(
+            {
+              payer,
+              from: payer,
+              gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+              mint,
+              fromTokenAccount,
+              bridge: bridge.address,
+              tokenVault: tokenVaultAddress,
+              owner: payer,
+              callBuffer: opts.bufferAddress,
+              outgoingMessage,
+              tokenProgram,
+              systemProgram: SYSTEM_PROGRAM_ADDRESS,
+              outgoingMessageSalt: salt,
+              to: toBytes(opts.to),
+              remoteToken: remoteTokenBytes,
+              amount,
+            },
+            { programAddress: this.config.bridgeProgram },
+          ),
+        ];
+      },
+      opts.idempotencyKey,
+    );
+  }
+
+  /**
+   * Bridges wrapped tokens back to Base with a call whose data comes from
+   * a pre-filled call buffer. The call buffer is consumed (closed) by this
+   * operation.
+   */
+  async bridgeWrappedTokenWithBufferedCall(
+    opts: BufferedBridgeWrappedOpts,
+  ): Promise<BridgeOpResult> {
+    return await this.executeBridgeOp(
+      opts.payForRelay,
+      opts.gasLimit,
+      async ({ payer, bridge, outgoingMessage, salt }) => {
+        const { mint, fromTokenAccount, amount, tokenProgram } =
+          await this.setupSpl(opts, payer);
+
+        return [
+          getBridgeWrappedTokenWithBufferedCallInstruction(
+            {
+              payer,
+              from: payer,
+              gasFeeReceiver: bridge.data.gasConfig.gasFeeReceiver,
+              mint,
+              fromTokenAccount,
+              bridge: bridge.address,
+              owner: payer,
+              callBuffer: opts.bufferAddress,
+              outgoingMessage,
+              tokenProgram,
+              systemProgram: SYSTEM_PROGRAM_ADDRESS,
+              outgoingMessageSalt: salt,
+              to: toBytes(opts.to),
+              amount,
+            },
+            { programAddress: this.config.bridgeProgram },
+          ),
+        ];
+      },
+      opts.idempotencyKey,
+    );
+  }
+
   private formatCall(call: EvmCall): FormattedCall;
   private formatCall(call?: EvmCall): FormattedCall | null;
   private formatCall(call?: EvmCall): FormattedCall | null {
@@ -908,15 +1214,17 @@ export class SolanaEngine {
   private async buildAndSendTransaction(
     instructions: Instruction[],
     payer: TransactionSigner,
+    additionalSigners?: TransactionSigner[],
   ) {
     const blockhash = await this.rpc.getLatestBlockhash().send();
 
+    const allSigners = [payer, ...(additionalSigners ?? [])];
     const transactionMessage = pipe(
       createTransactionMessage({ version: 0 }),
       (tx) => setTransactionMessageFeePayer(payer.address, tx),
       (tx) => setTransactionMessageLifetimeUsingBlockhash(blockhash.value, tx),
       (tx) => appendTransactionMessageInstructions(instructions, tx),
-      (tx) => addSignersToTransactionMessage([payer], tx),
+      (tx) => addSignersToTransactionMessage(allSigners, tx),
     );
 
     const signedTransaction =

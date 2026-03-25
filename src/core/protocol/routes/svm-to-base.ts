@@ -1,8 +1,10 @@
-import type { Address as SolAddress } from "@solana/kit";
+import type { Signature, Address as SolAddress } from "@solana/kit";
 import { address as solAddress } from "@solana/kit";
 import type { Hash, Hex } from "viem";
+import { hexToBytes, toBytes } from "viem";
 import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
 import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
+import { CallType } from "../../../clients/ts/src/bridge";
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import {
   BridgeUnsupportedActionError,
@@ -36,6 +38,32 @@ import {
   SOLANA_BASE_TX_FEE,
 } from "../engines/constants";
 import { SolanaEngine } from "../engines/solana-engine";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Call data buffering constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Byte threshold beyond which call data must use the buffered path.
+ * Solana transactions are limited to ~1,232 bytes; after accounting for
+ * signatures, blockhash, accounts, and instruction overhead, ~900 bytes
+ * of call data is the practical maximum for inline instructions.
+ */
+const CALL_DATA_BUFFER_THRESHOLD = 900;
+
+/**
+ * Maximum bytes of call data in the `initializeCallBuffer` transaction.
+ * Slightly smaller than the append chunk size because the init instruction
+ * carries additional fields (callType, to, value, maxDataLen) and requires
+ * an extra signer (the callBuffer keypair).
+ */
+const INIT_CHUNK_SIZE = 800;
+
+/**
+ * Maximum bytes of call data per `appendToCallBuffer` transaction.
+ * The append instruction has minimal overhead (discriminator + data).
+ */
+const APPEND_CHUNK_SIZE = 900;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fee estimation constants for SVM -> Base quotes
@@ -256,9 +284,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     });
   }
 
-  /**
-   * Initiate a pure call action (EVM call only, no transfer).
-   */
+  /** Initiate a pure call action (EVM call only, no transfer). */
   private async initiateCall(req: BridgeRequest): Promise<BridgeOperation> {
     if (req.action.kind !== "call") {
       throw new Error("Expected call action");
@@ -268,22 +294,31 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     const gasLimit = req.relay?.gasLimit ?? DEFAULT_EVM_GAS_LIMIT;
     const payForRelay = (req.relay?.mode ?? "auto") === "auto";
 
-    const { outgoingPda, signature } = await this.solanaEngine.bridgeCall({
-      to: evmCall.to,
-      value: evmCall.value,
-      data: evmCall.data,
-      ty: evmCall.ty,
-      payForRelay,
+    return this.dispatchBridgeOp(
+      req,
+      evmCall,
       gasLimit,
-      idempotencyKey: req.idempotencyKey,
-    });
-
-    return this.buildOperation({ req, outgoingPda, signature, gasLimit });
+      () =>
+        this.solanaEngine.bridgeCall({
+          to: evmCall.to,
+          value: evmCall.value,
+          data: evmCall.data,
+          ty: evmCall.ty,
+          payForRelay,
+          gasLimit,
+          idempotencyKey: req.idempotencyKey,
+        }),
+      (buffer) =>
+        this.solanaEngine.bridgeCallBuffered({
+          bufferAddress: buffer,
+          payForRelay,
+          gasLimit,
+          idempotencyKey: req.idempotencyKey,
+        }),
+    );
   }
 
-  /**
-   * Initiate a native SOL transfer, optionally with an EVM call.
-   */
+  /** Initiate a native SOL transfer, optionally with an EVM call. */
   private async initiateNativeTransfer(
     req: BridgeRequest,
   ): Promise<BridgeOperation> {
@@ -291,26 +326,39 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       throw new Error("Expected transfer action");
     }
 
+    const to = req.action.recipient as `0x${string}`;
+    const amount = req.action.amount;
     const { evmCall, gasLimit, payForRelay } = this.transferDefaults(
       req,
       req.action.call,
     );
 
-    const { outgoingPda, signature } = await this.solanaEngine.bridgeSol({
-      to: req.action.recipient as `0x${string}`,
-      amount: req.action.amount,
-      payForRelay,
-      call: evmCall,
+    return this.dispatchBridgeOp(
+      req,
+      evmCall,
       gasLimit,
-      idempotencyKey: req.idempotencyKey,
-    });
-
-    return this.buildOperation({ req, outgoingPda, signature, gasLimit });
+      () =>
+        this.solanaEngine.bridgeSol({
+          to,
+          amount,
+          payForRelay,
+          call: evmCall,
+          gasLimit,
+          idempotencyKey: req.idempotencyKey,
+        }),
+      (buffer) =>
+        this.solanaEngine.bridgeSolWithBufferedCall({
+          bufferAddress: buffer,
+          to,
+          amount,
+          payForRelay,
+          gasLimit,
+          idempotencyKey: req.idempotencyKey,
+        }),
+    );
   }
 
-  /**
-   * Initiate an SPL token transfer, optionally with an EVM call.
-   */
+  /** Initiate an SPL token transfer, optionally with an EVM call. */
   private async initiateTokenTransfer(
     req: BridgeRequest,
   ): Promise<BridgeOperation> {
@@ -328,28 +376,43 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       });
     }
 
+    const to = req.action.recipient as `0x${string}`;
+    const amount = req.action.amount;
     const { evmCall, gasLimit, payForRelay } = this.transferDefaults(
       req,
       req.action.call,
     );
 
-    const { outgoingPda, signature } = await this.solanaEngine.bridgeSpl({
-      to: req.action.recipient as `0x${string}`,
-      mint,
-      remoteToken,
-      amount: req.action.amount,
-      payForRelay,
-      call: evmCall,
+    return this.dispatchBridgeOp(
+      req,
+      evmCall,
       gasLimit,
-      idempotencyKey: req.idempotencyKey,
-    });
-
-    return this.buildOperation({ req, outgoingPda, signature, gasLimit });
+      () =>
+        this.solanaEngine.bridgeSpl({
+          to,
+          mint,
+          remoteToken,
+          amount,
+          payForRelay,
+          call: evmCall,
+          gasLimit,
+          idempotencyKey: req.idempotencyKey,
+        }),
+      (buffer) =>
+        this.solanaEngine.bridgeSplWithBufferedCall({
+          bufferAddress: buffer,
+          to,
+          mint,
+          remoteToken,
+          amount,
+          payForRelay,
+          gasLimit,
+          idempotencyKey: req.idempotencyKey,
+        }),
+    );
   }
 
-  /**
-   * Initiate a wrapped token transfer, optionally with an EVM call.
-   */
+  /** Initiate a wrapped token transfer, optionally with an EVM call. */
   private async initiateWrappedTransfer(
     req: BridgeRequest,
   ): Promise<BridgeOperation> {
@@ -357,22 +420,39 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       throw new Error("Expected wrapped transfer action");
     }
 
+    const to = req.action.recipient as `0x${string}`;
+    const mintAddress = req.action.asset.address;
+    const amount = req.action.amount;
     const { evmCall, gasLimit, payForRelay } = this.transferDefaults(
       req,
       req.action.call,
     );
 
-    const { outgoingPda, signature } = await this.solanaEngine.bridgeWrapped({
-      to: req.action.recipient as `0x${string}`,
-      mint: req.action.asset.address,
-      amount: req.action.amount,
-      payForRelay,
-      call: evmCall,
+    return this.dispatchBridgeOp(
+      req,
+      evmCall,
       gasLimit,
-      idempotencyKey: req.idempotencyKey,
-    });
-
-    return this.buildOperation({ req, outgoingPda, signature, gasLimit });
+      () =>
+        this.solanaEngine.bridgeWrapped({
+          to,
+          mint: mintAddress,
+          amount,
+          payForRelay,
+          call: evmCall,
+          gasLimit,
+          idempotencyKey: req.idempotencyKey,
+        }),
+      (buffer) =>
+        this.solanaEngine.bridgeWrappedTokenWithBufferedCall({
+          bufferAddress: buffer,
+          to,
+          mint: mintAddress,
+          amount,
+          payForRelay,
+          gasLimit,
+          idempotencyKey: req.idempotencyKey,
+        }),
+    );
   }
 
   /**
@@ -403,6 +483,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     outgoingPda: SolAddress;
     signature: string;
     gasLimit: bigint;
+    auxiliaryTxs?: string[];
   }): Promise<BridgeOperation> {
     const destinationHash = await this.deriveOuterHash(
       args.outgoingPda,
@@ -418,6 +499,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       request: args.req,
       messageRef,
       initiationTx: args.signature,
+      ...(args.auxiliaryTxs && { auxiliaryTxs: args.auxiliaryTxs }),
     };
   }
 
@@ -476,6 +558,128 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
   ): EvmCall | undefined {
     if (!destCall) return undefined;
     return this.extractEvmCall(destCall);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Call data buffering helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Dispatches a bridge operation through either the inline or buffered path
+   * depending on call data size. Automatically uses the buffered path when
+   * call data exceeds the inline threshold (~900 bytes).
+   */
+  private async dispatchBridgeOp(
+    req: BridgeRequest,
+    evmCall: EvmCall | undefined,
+    gasLimit: bigint,
+    inlineFn: () => Promise<{ outgoingPda: SolAddress; signature: Signature }>,
+    bufferedFn: (
+      bufferAddress: SolAddress,
+    ) => Promise<{ outgoingPda: SolAddress; signature: Signature }>,
+  ): Promise<BridgeOperation> {
+    const bufferableData = this.getBufferableCallData(evmCall);
+    if (bufferableData) {
+      // evmCall is guaranteed non-null when bufferableData is non-null
+      return this.initiateWithBuffer(
+        req,
+        evmCall!,
+        bufferableData,
+        gasLimit,
+        bufferedFn,
+      );
+    }
+    const { outgoingPda, signature } = await inlineFn();
+    return this.buildOperation({ req, outgoingPda, signature, gasLimit });
+  }
+
+  /**
+   * Returns the decoded call data bytes when the payload is too large for a
+   * single Solana transaction, or `null` when it fits inline.
+   */
+  private getBufferableCallData(call?: EvmCall): Uint8Array | null {
+    if (!call) return null;
+    // Quick string-length check avoids a full hexToBytes allocation for small payloads.
+    // Each byte is 2 hex chars; subtract 2 for the "0x" prefix.
+    const byteLen = (call.data.length - 2) / 2;
+    if (byteLen <= CALL_DATA_BUFFER_THRESHOLD) return null;
+    return hexToBytes(call.data);
+  }
+
+  /**
+   * Orchestrates the full call-buffer lifecycle for large call payloads:
+   *   1. Initialize a call buffer with the first chunk of data
+   *   2. Append remaining chunks in separate transactions
+   *   3. Execute the bridge operation using the buffer
+   *
+   * On bridge failure, the buffer is closed to recover rent.
+   *
+   * @param bridgeFn - Receives the buffer address and performs the final
+   *   bridge_*_buffered instruction.
+   */
+  private async initiateWithBuffer(
+    req: BridgeRequest,
+    call: EvmCall,
+    callData: Uint8Array,
+    gasLimit: bigint,
+    bridgeFn: (
+      bufferAddress: SolAddress,
+    ) => Promise<{ outgoingPda: SolAddress; signature: Signature }>,
+  ): Promise<BridgeOperation> {
+    const firstChunk = callData.subarray(0, INIT_CHUNK_SIZE);
+    const remainingData = callData.subarray(INIT_CHUNK_SIZE);
+    const auxiliarySignatures: string[] = [];
+
+    // 1. Initialize the call buffer
+    const { bufferAddress, signature: initSig } =
+      await this.solanaEngine.initializeCallBuffer({
+        callType: call.ty ?? CallType.Call,
+        to: toBytes(call.to),
+        value: call.value,
+        initialData: firstChunk,
+        maxDataLen: BigInt(callData.length),
+      });
+    auxiliarySignatures.push(initSig);
+
+    // Once the buffer is initialized, any failure in appends or the bridge
+    // call should trigger cleanup to recover rent from the buffer account.
+    try {
+      // 2. Append remaining chunks
+      for (
+        let offset = 0;
+        offset < remainingData.length;
+        offset += APPEND_CHUNK_SIZE
+      ) {
+        const chunk = remainingData.subarray(
+          offset,
+          offset + APPEND_CHUNK_SIZE,
+        );
+        const { signature: appendSig } =
+          await this.solanaEngine.appendToCallBuffer({
+            bufferAddress,
+            data: chunk,
+          });
+        auxiliarySignatures.push(appendSig);
+      }
+
+      // 3. Execute the buffered bridge instruction (which also closes the buffer)
+      const result = await bridgeFn(bufferAddress);
+      return this.buildOperation({
+        req,
+        outgoingPda: result.outgoingPda,
+        signature: result.signature,
+        gasLimit,
+        auxiliaryTxs: auxiliarySignatures,
+      });
+    } catch (e) {
+      // Attempt to close the buffer to recover rent
+      try {
+        await this.solanaEngine.closeCallBuffer({ bufferAddress });
+      } catch {
+        // Ignore cleanup failure — the original error is more important
+      }
+      throw e;
+    }
   }
 
   async prove(_ref: MessageRef, _opts?: ProveOptions): Promise<ProveResult> {
