@@ -74,7 +74,12 @@ import {
 import { getIdlConstant } from "../../../utils/bridge-idl.constants";
 import { getRelayerIdlConstant } from "../../../utils/relayer-idl.constants";
 import { sleep } from "../../../utils/time";
-import { BridgeAlreadyExecutedError, BridgeNotProvenError } from "../../errors";
+import {
+  BridgeAlreadyExecutedError,
+  BridgeInvariantViolationError,
+  BridgeNotProvenError,
+  BridgeValidationError,
+} from "../../errors";
 import type { EvmCall } from "../../types";
 import { deriveIncomingMessagePda } from "../pda";
 import {
@@ -737,7 +742,10 @@ export class SolanaEngine {
   private messageCallAccounts(message: MessageCall) {
     const ixs = message.fields[0];
     if (ixs.length === 0) {
-      throw new Error("Zero instructions in call message");
+      throw new BridgeInvariantViolationError(
+        "Zero instructions in call message",
+        { stage: "execute" },
+      );
     }
 
     return [
@@ -796,7 +804,10 @@ export class SolanaEngine {
     const mint = await this.rpc.getAccountInfo(localToken).send();
     const mintInfo = mint.value;
     if (!mintInfo) {
-      throw new Error("Mint not found");
+      throw new BridgeInvariantViolationError(
+        `Mint not found for token address: ${localToken}`,
+        { stage: "execute" },
+      );
     }
 
     return [
@@ -1150,7 +1161,10 @@ export class SolanaEngine {
     const mint = address(opts.mint);
     const maybeMint = await fetchMaybeMint(this.rpc, mint);
     if (!maybeMint.exists) {
-      throw new Error("Mint not found");
+      throw new BridgeValidationError(
+        `Mint not found for token address: ${opts.mint}`,
+        { stage: "initiate" },
+      );
     }
 
     const amount = opts.amount;
@@ -1293,7 +1307,10 @@ export class SolanaEngine {
 
     const maybeAta = await fetchMaybeToken(this.rpc, ataAddress);
     if (!maybeAta.exists) {
-      throw new Error("ATA does not exist");
+      throw new BridgeValidationError(
+        `Associated token account does not exist for payer ${payerAddress}, mint ${mint.address}`,
+        { stage: "initiate" },
+      );
     }
 
     return maybeAta.address;

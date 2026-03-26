@@ -199,13 +199,17 @@ export class BridgeInvariantViolationError extends BridgeError {
 export class BridgeValidationError extends BridgeError {
   constructor(
     message: string,
-    args?: { route?: BridgeRoute; cause?: unknown },
+    args?: {
+      stage?: BridgeError["stage"];
+      route?: BridgeRoute;
+      cause?: unknown;
+    },
   ) {
     super({
       message,
       code: "VALIDATION",
       outcome: "user_fix",
-      stage: "initiate",
+      stage: args?.stage ?? "initiate",
       route: args?.route,
       cause: args?.cause,
     });
