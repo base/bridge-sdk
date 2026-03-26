@@ -33,12 +33,30 @@ export type AssetRef =
   | { kind: "token"; address: string } // mint for Solana, ERC20 for EVM
   | { kind: "wrapped"; address: string }; // protocol-specific wrapped token id
 
+/**
+ * EVM call type matching the on-chain `CallType` enum.
+ * - `Call` (0): Regular external call (`address.call{value}(data)`)
+ * - `DelegateCall` (1): Delegate call (`address.delegatecall(data)`); value must be 0
+ * - `Create` (2): Deploy via `CREATE` opcode; `to` must be zero address
+ * - `Create2` (3): Deploy via `CREATE2` opcode; `to` must be zero address;
+ *   `data` must be `abi.encode(bytes32 salt, bytes creationCode)`
+ */
+export enum EvmCallType {
+  Call = 0,
+  DelegateCall = 1,
+  Create = 2,
+  Create2 = 3,
+}
+
 export interface EvmCall {
   to: `0x${string}`;
   value: bigint;
   data: `0x${string}`;
-  /** Optional protocol-specific call type. */
-  ty?: number;
+  /**
+   * Call type determining how the call is executed on-chain.
+   * Defaults to `EvmCallType.Call` (0) when omitted.
+   */
+  ty?: EvmCallType;
 }
 
 /**

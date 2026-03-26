@@ -1,5 +1,4 @@
 import type {
-  BridgeRoute,
   ChainId,
   DestinationCall,
   EvmCall,
@@ -31,27 +30,3 @@ export function isSolanaChainId(chainId: ChainId): boolean {
   return chainId.startsWith("solana:");
 }
 
-/**
- * Validate that a DestinationCall matches the route's destination chain.
- *
- * @throws Error if call type doesn't match destination chain
- */
-export function validateDestinationCall(
-  call: DestinationCall,
-  route: BridgeRoute,
-): void {
-  const isSvmDestination = isSolanaChainId(route.destinationChain);
-
-  if (isSvmDestination && !isSolanaDestinationCall(call)) {
-    throw new Error(
-      `Call type mismatch: route destination is Solana but call kind is "${call.kind}". ` +
-        `Use { kind: "solana", call: SolanaCall } for Base -> SVM routes.`,
-    );
-  }
-  if (!isSvmDestination && !isEvmDestinationCall(call)) {
-    throw new Error(
-      `Call type mismatch: route destination is EVM but call kind is "${call.kind}". ` +
-        `Use { kind: "evm", call: EvmCall } for SVM -> Base routes.`,
-    );
-  }
-}

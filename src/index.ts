@@ -5,3 +5,4 @@ export { createBridgeClient } from "./core/client";
 export type { ActionableOutcome, BridgeErrorCode } from "./core/errors";
 export { BridgeError } from "./core/errors";
 export type * from "./core/types";
+export { EvmCallType } from "./core/types";

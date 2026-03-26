@@ -29,7 +29,6 @@ import type {
   StatusOptions,
   TransferRequestInput,
 } from "./types";
-import { validateDestinationCall } from "./utils";
 import { validateAction } from "./validation";
 
 export interface BridgeClientConfig {
@@ -100,11 +99,6 @@ class DefaultBridgeClient implements BridgeClient {
   }
 
   async transfer(req: TransferRequestInput): Promise<BridgeOperation> {
-    // Validate call matches destination chain if present
-    if (req.call) {
-      validateDestinationCall(req.call, req.route);
-    }
-
     const bridgeReq: BridgeRequest = {
       route: req.route,
       action: {
@@ -122,9 +116,6 @@ class DefaultBridgeClient implements BridgeClient {
   }
 
   async call(req: CallRequestInput): Promise<BridgeOperation> {
-    // Validate call matches destination chain
-    validateDestinationCall(req.call, req.route);
-
     const bridgeReq: BridgeRequest = {
       route: req.route,
       action: { kind: "call", call: req.call },
@@ -136,7 +127,7 @@ class DefaultBridgeClient implements BridgeClient {
   }
 
   async request(req: BridgeRequest): Promise<BridgeOperation> {
-    validateAction(req.action);
+    validateAction(req.action, req.route);
     const adapter = await this.getRouteAdapter(req.route);
     this.logger.debug(
       `bridge.request: initiating ${req.route.sourceChain} -> ${req.route.destinationChain}`,
@@ -145,7 +136,7 @@ class DefaultBridgeClient implements BridgeClient {
   }
 
   async quote(req: QuoteRequest): Promise<Quote> {
-    validateAction(req.action);
+    validateAction(req.action, req.route);
     const adapter = await this.getRouteAdapter(req.route);
     this.logger.debug(
       `bridge.quote: estimating ${req.route.sourceChain} -> ${req.route.destinationChain}`,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { BridgeValidationError } from "../src/core/errors";
 import type {
   BridgeRoute,
   DestinationCall,
@@ -9,8 +10,8 @@ import {
   isEvmDestinationCall,
   isSolanaChainId,
   isSolanaDestinationCall,
-  validateDestinationCall,
 } from "../src/core/utils";
+import { validateDestinationCall } from "../src/core/validation";
 
 describe("isSolanaChainId", () => {
   test("returns true for solana:mainnet", () => {
@@ -127,5 +128,19 @@ describe("validateDestinationCall", () => {
     expect(() => validateDestinationCall(destCall, svmRoute)).toThrow(
       /route destination is Solana but call kind is "evm"/,
     );
+  });
+
+  test("thrown error is a BridgeValidationError with route context", () => {
+    const destCall: DestinationCall = { kind: "evm", call: evmCall };
+    let error: BridgeValidationError | undefined;
+    try {
+      validateDestinationCall(destCall, svmRoute);
+    } catch (e) {
+      error = e as BridgeValidationError;
+    }
+    expect(error).toBeInstanceOf(BridgeValidationError);
+    expect(error!.code).toBe("VALIDATION");
+    expect(error!.outcome).toBe("user_fix");
+    expect(error!.route).toEqual(svmRoute);
   });
 });
