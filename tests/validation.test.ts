@@ -67,9 +67,9 @@ describe("validateAmount", () => {
         error = e as BridgeValidationError;
       }
       expect(error).toBeInstanceOf(BridgeValidationError);
-      expect(error!.code).toBe("VALIDATION");
-      expect(error!.outcome).toBe("user_fix");
-      expect(error!.stage).toBe("initiate");
+      expect(error?.code).toBe("VALIDATION");
+      expect(error?.outcome).toBe("user_fix");
+      expect(error?.stage).toBe("initiate");
     });
   });
 });
@@ -142,8 +142,8 @@ describe("validateEvmAddress", () => {
         error = e as BridgeValidationError;
       }
       expect(error).toBeInstanceOf(BridgeValidationError);
-      expect(error!.code).toBe("VALIDATION");
-      expect(error!.outcome).toBe("user_fix");
+      expect(error?.code).toBe("VALIDATION");
+      expect(error?.outcome).toBe("user_fix");
     });
 
     test("error message includes the invalid value", () => {
@@ -153,7 +153,7 @@ describe("validateEvmAddress", () => {
     });
 
     test("truncates long invalid values in error message", () => {
-      const long = "0x" + "g".repeat(100);
+      const long = `0x${"g".repeat(100)}`;
       let message = "";
       try {
         validateEvmAddress(long);
@@ -190,25 +190,25 @@ describe("validateSolanaAddress", () => {
     });
 
     test("throws for invalid base58 character '0' (zero)", () => {
-      expect(() => validateSolanaAddress("0" + "1".repeat(31))).toThrow(
+      expect(() => validateSolanaAddress(`0${"1".repeat(31)}`)).toThrow(
         "Invalid Solana address",
       );
     });
 
     test("throws for invalid base58 character 'O'", () => {
-      expect(() => validateSolanaAddress("O" + "1".repeat(31))).toThrow(
+      expect(() => validateSolanaAddress(`O${"1".repeat(31)}`)).toThrow(
         "Invalid Solana address",
       );
     });
 
     test("throws for invalid base58 character 'I'", () => {
-      expect(() => validateSolanaAddress("I" + "1".repeat(31))).toThrow(
+      expect(() => validateSolanaAddress(`I${"1".repeat(31)}`)).toThrow(
         "Invalid Solana address",
       );
     });
 
     test("throws for invalid base58 character 'l'", () => {
-      expect(() => validateSolanaAddress("l" + "1".repeat(31))).toThrow(
+      expect(() => validateSolanaAddress(`l${"1".repeat(31)}`)).toThrow(
         "Invalid Solana address",
       );
     });
@@ -243,8 +243,8 @@ describe("validateSolanaAddress", () => {
         error = e as BridgeValidationError;
       }
       expect(error).toBeInstanceOf(BridgeValidationError);
-      expect(error!.code).toBe("VALIDATION");
-      expect(error!.outcome).toBe("user_fix");
+      expect(error?.code).toBe("VALIDATION");
+      expect(error?.outcome).toBe("user_fix");
     });
   });
 });
@@ -342,8 +342,8 @@ describe("validateEvmCallData", () => {
         error = e as BridgeValidationError;
       }
       expect(error).toBeInstanceOf(BridgeValidationError);
-      expect(error!.code).toBe("VALIDATION");
-      expect(error!.outcome).toBe("user_fix");
+      expect(error?.code).toBe("VALIDATION");
+      expect(error?.outcome).toBe("user_fix");
     });
   });
 });
@@ -400,8 +400,8 @@ describe("validateSolanaInstructionData", () => {
         error = e as BridgeValidationError;
       }
       expect(error).toBeInstanceOf(BridgeValidationError);
-      expect(error!.code).toBe("VALIDATION");
-      expect(error!.outcome).toBe("user_fix");
+      expect(error?.code).toBe("VALIDATION");
+      expect(error?.outcome).toBe("user_fix");
     });
   });
 });
@@ -444,8 +444,8 @@ describe("validateEvmCallValue", () => {
         error = e as BridgeValidationError;
       }
       expect(error).toBeInstanceOf(BridgeValidationError);
-      expect(error!.code).toBe("VALIDATION");
-      expect(error!.outcome).toBe("user_fix");
+      expect(error?.code).toBe("VALIDATION");
+      expect(error?.outcome).toBe("user_fix");
     });
   });
 });
@@ -618,8 +618,8 @@ describe("validateEvmCallType", () => {
         error = e as BridgeValidationError;
       }
       expect(error).toBeInstanceOf(BridgeValidationError);
-      expect(error!.code).toBe("VALIDATION");
-      expect(error!.outcome).toBe("user_fix");
+      expect(error?.code).toBe("VALIDATION");
+      expect(error?.outcome).toBe("user_fix");
     });
   });
 });
@@ -766,7 +766,9 @@ describe("validateDestinationCallFields", () => {
         ],
       },
     };
-    expect(() => validateDestinationCallFields(call, solanaRoute)).not.toThrow();
+    expect(() =>
+      validateDestinationCallFields(call, solanaRoute),
+    ).not.toThrow();
   });
 
   test("throws for invalid Solana call programId", () => {
@@ -803,7 +805,9 @@ describe("validateDestinationCallFields", () => {
         ],
       },
     };
-    expect(() => validateDestinationCallFields(call, solanaRoute)).not.toThrow();
+    expect(() =>
+      validateDestinationCallFields(call, solanaRoute),
+    ).not.toThrow();
   });
 
   test("throws for invalid Solana account pubkey", () => {
@@ -857,7 +861,9 @@ describe("validateDestinationCallFields", () => {
         ],
       },
     };
-    expect(() => validateDestinationCallFields(call, solanaRoute)).not.toThrow();
+    expect(() =>
+      validateDestinationCallFields(call, solanaRoute),
+    ).not.toThrow();
   });
 
   test("validates multiple instructions", () => {
@@ -880,7 +886,9 @@ describe("validateDestinationCallFields", () => {
         ],
       },
     };
-    expect(() => validateDestinationCallFields(call, solanaRoute)).not.toThrow();
+    expect(() =>
+      validateDestinationCallFields(call, solanaRoute),
+    ).not.toThrow();
   });
 });
 
