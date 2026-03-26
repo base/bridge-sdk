@@ -139,8 +139,8 @@ describe("validateDestinationCall", () => {
       error = e as BridgeValidationError;
     }
     expect(error).toBeInstanceOf(BridgeValidationError);
-    expect(error!.code).toBe("VALIDATION");
-    expect(error!.outcome).toBe("user_fix");
-    expect(error!.route).toEqual(svmRoute);
+    expect(error?.code).toBe("VALIDATION");
+    expect(error?.outcome).toBe("user_fix");
+    expect(error?.route).toEqual(svmRoute);
   });
 });

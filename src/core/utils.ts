@@ -1,9 +1,4 @@
-import type {
-  ChainId,
-  DestinationCall,
-  EvmCall,
-  SolanaCall,
-} from "./types";
+import type { ChainId, DestinationCall, EvmCall, SolanaCall } from "./types";
 
 /**
  * Type guard for SolanaCall destination.
@@ -29,4 +24,3 @@ export function isEvmDestinationCall(
 export function isSolanaChainId(chainId: ChainId): boolean {
   return chainId.startsWith("solana:");
 }
-
