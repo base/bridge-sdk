@@ -688,7 +688,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
 
   async execute(
     ref: MessageRef,
-    _opts?: ExecuteOptions,
+    opts?: ExecuteOptions,
   ): Promise<ExecuteResult> {
     if (!this.getDestinationOuterHash(ref)) {
       throw new BridgeUnsupportedActionError({
@@ -701,7 +701,11 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       solAddress(ref.source.id.value),
     );
 
-    const tx = await this.baseEngine.executeMessage(outgoing);
+    const tx = await this.baseEngine.executeMessage(
+      outgoing,
+      { route: ref.route, chain: ref.route.destinationChain },
+      { gasLimit: opts?.relay?.gasLimit },
+    );
     return { messageRef: ref, executionTx: tx };
   }
 

@@ -18,6 +18,7 @@ import {
 } from "../../errors";
 import { pollingMonitor } from "../../monitor/polling";
 import type {
+  BridgeContext,
   BridgeOperation,
   BridgeRequest,
   BridgeRoute,
@@ -404,7 +405,10 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     txHash: Hash,
   ): Promise<BridgeOperation> {
     const { messageHash, nonce, sender, data, mmrRoot } =
-      await this.extractMessageInitiated(txHash);
+      await this.extractMessageInitiated(txHash, {
+        route: req.route,
+        chain: req.route.sourceChain,
+      });
 
     const messageRef: MessageRef = {
       route: req.route,
@@ -480,6 +484,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const { event, rawProof } = await this.baseEngine.generateProof(
       txHash,
       blockNumber,
+      { route: ref.route, chain: ref.route.sourceChain },
     );
     const res = await this.solanaEngine.handleProveMessage(
       event,
@@ -581,7 +586,10 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     return pda;
   }
 
-  private async extractMessageInitiated(txHash: Hash): Promise<{
+  private async extractMessageInitiated(
+    txHash: Hash,
+    context: BridgeContext,
+  ): Promise<{
     messageHash: Hex;
     mmrRoot: Hex;
     nonce: bigint;
@@ -596,7 +604,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     if (!e || rest.length > 0) {
       throw new BridgeProofNotAvailableError(
         `Expected exactly 1 MessageInitiated event in tx receipt; found ${e ? rest.length + 1 : 0}`,
-        { route: this.route, chain: this.route.sourceChain },
+        context,
       );
     }
 

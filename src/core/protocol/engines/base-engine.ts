@@ -20,7 +20,16 @@ import {
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
 import { sleep } from "../../../utils/time";
-import type { EvmCall } from "../../types";
+import {
+  type BridgeError,
+  BridgeExecutionRevertedError,
+  BridgeInvariantViolationError,
+  BridgeMessageFailedError,
+  BridgeProofNotAvailableError,
+  BridgeTimeoutError,
+  BridgeValidationError,
+} from "../../errors";
+import type { BridgeContext, EvmCall } from "../../types";
 import { buildEvmIncomingMessage, bytes32FromSolanaPubkey } from "../encoding";
 import { decodeMessageInitiatedEvents } from "../events";
 import {
@@ -88,10 +97,11 @@ export class BaseEngine {
     return this.validatorAddressPromise;
   }
 
-  private requireWallet() {
+  private requireWallet(stage: BridgeError["stage"] = "initiate") {
     if (!this.walletClient || !this.account) {
-      throw new Error(
+      throw new BridgeValidationError(
         "Base wallet client not initialized (missing privateKey)",
+        { stage },
       );
     }
     return {
@@ -148,20 +158,28 @@ export class BaseEngine {
     return await walletClient.writeContract(request);
   }
 
-  async generateProof(transactionHash: Hash, blockNumber: bigint) {
+  async generateProof(
+    transactionHash: Hash,
+    blockNumber: bigint,
+    context: BridgeContext,
+  ) {
     const txReceipt = await this.publicClient.getTransactionReceipt({
       hash: transactionHash,
     });
 
     if (txReceipt.status !== "success") {
-      throw new Error(`Transaction reverted: ${transactionHash}`);
+      throw new BridgeExecutionRevertedError(
+        `Transaction reverted: ${transactionHash}`,
+        { stage: "prove", ...context },
+      );
     }
 
     // Validate that bridge state is not behind the transaction
     for (const log of txReceipt.logs) {
       if (blockNumber < log.blockNumber) {
-        throw new Error(
+        throw new BridgeProofNotAvailableError(
           `Solana bridge state is stale (behind transaction block). Bridge state block: ${blockNumber}, Transaction block: ${log.blockNumber}`,
+          context,
         );
       }
     }
@@ -170,10 +188,11 @@ export class BaseEngine {
     const msgInitEvents = decodeMessageInitiatedEvents(txReceipt.logs);
 
     if (msgInitEvents.length !== 1) {
-      throw new Error(
+      throw new BridgeInvariantViolationError(
         msgInitEvents.length === 0
           ? "No MessageInitiated event found in transaction"
           : "Multiple MessageInitiated events found (unsupported)",
+        { stage: "prove", ...context },
       );
     }
 
@@ -192,6 +211,7 @@ export class BaseEngine {
 
   async monitorMessageExecution(
     outgoingMessageAccount: Account<OutgoingMessage, string>,
+    context: BridgeContext,
     options: {
       gasLimit?: bigint;
       timeoutMs?: number;
@@ -207,33 +227,57 @@ export class BaseEngine {
       gasLimit: options.gasLimit ?? DEFAULT_EVM_GAS_LIMIT,
     });
 
-    while (Date.now() - startTime <= timeoutMs) {
-      const isSuccessful = await this.publicClient.readContract({
+    const contracts = [
+      {
         address: this.config.bridgeContract,
         abi: BRIDGE_ABI,
         functionName: "successes",
         args: [outerHash],
+      },
+      {
+        address: this.config.bridgeContract,
+        abi: BRIDGE_ABI,
+        functionName: "failures",
+        args: [outerHash],
+      },
+    ] as const;
+
+    while (Date.now() - startTime <= timeoutMs) {
+      const [isSuccessful, isFailed] = await this.publicClient.multicall({
+        contracts,
+        allowFailure: false,
       });
 
       if (isSuccessful) {
         return;
       }
 
+      if (isFailed) {
+        throw new BridgeMessageFailedError(
+          `Message execution failed on Base. Hash: ${outerHash}`,
+          context,
+        );
+      }
+
       await sleep(pollIntervalMs);
     }
 
-    throw new Error(`Monitor message execution timed out after ${timeoutMs}ms`);
+    throw new BridgeTimeoutError(
+      `Monitor message execution timed out after ${timeoutMs}ms`,
+      { stage: "monitor", ...context },
+    );
   }
 
   async executeMessage(
     outgoingMessageAccount: Account<OutgoingMessage, string>,
+    context: BridgeContext,
     options: {
       gasLimit?: bigint;
       timeoutMs?: number;
       pollIntervalMs?: number;
     } = {},
   ): Promise<Hash> {
-    const { walletClient, account } = this.requireWallet();
+    const { walletClient, account } = this.requireWallet("execute");
 
     const { outerHash, evmMessage } = buildEvmIncomingMessage(
       outgoingMessageAccount,
@@ -273,21 +317,24 @@ export class BaseEngine {
 
     // Check if message previously failed
     if (failuresResult) {
-      throw new Error(
+      throw new BridgeMessageFailedError(
         `Message previously failed execution on Base. Hash: ${outerHash}`,
+        context,
       );
     }
 
     // Assert Bridge.getMessageHash(message) equals expected hash
     if (messageHashResult.toLowerCase() !== outerHash.toLowerCase()) {
-      throw new Error(
+      throw new BridgeInvariantViolationError(
         `Hash mismatch: getMessageHash != expected. got=${messageHashResult}, expected=${outerHash}`,
+        { stage: "execute", ...context },
       );
     }
 
     // Wait for validator approval of this exact message hash
     await this.waitForApproval(
       outerHash,
+      context,
       options.timeoutMs,
       options.pollIntervalMs,
     );
@@ -307,6 +354,7 @@ export class BaseEngine {
 
   private async waitForApproval(
     messageHash: Hex,
+    context: BridgeContext,
     timeoutMs = DEFAULT_MONITOR_TIMEOUT_MS,
     intervalMs = DEFAULT_MONITOR_POLL_INTERVAL_MS,
   ) {
@@ -335,8 +383,9 @@ export class BaseEngine {
       );
     }
 
-    throw new Error(
+    throw new BridgeTimeoutError(
       `Timed out waiting for BridgeValidator approval after ${timeoutMs}ms`,
+      { stage: "execute", ...context },
     );
   }
 

@@ -20,6 +20,8 @@ export interface BridgeRoute {
   destinationChain: ChainId;
 }
 
+export type BridgeContext = { route: BridgeRoute; chain: ChainId };
+
 /**
  * Chain-specific address string. The chain is implied by the surrounding context
  * (e.g., a `BridgeRoute`'s source/destination chain).

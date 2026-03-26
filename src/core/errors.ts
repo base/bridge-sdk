@@ -157,6 +157,45 @@ export class BridgeNotProvenError extends BridgeError {
   }
 }
 
+export class BridgeExecutionRevertedError extends BridgeError {
+  constructor(
+    message: string,
+    args: {
+      stage: BridgeError["stage"];
+      route?: BridgeRoute;
+      chain?: ChainId;
+      cause?: unknown;
+    },
+  ) {
+    super({
+      message,
+      code: "EXECUTION_REVERTED",
+      outcome: "fatal",
+      stage: args.stage,
+      route: args.route,
+      chain: args.chain,
+      cause: args.cause,
+    });
+  }
+}
+
+export class BridgeMessageFailedError extends BridgeError {
+  constructor(
+    message: string,
+    args: { route?: BridgeRoute; chain?: ChainId; cause?: unknown },
+  ) {
+    super({
+      message,
+      code: "MESSAGE_FAILED",
+      outcome: "fatal",
+      stage: "execute",
+      route: args.route,
+      chain: args.chain,
+      cause: args.cause,
+    });
+  }
+}
+
 export class BridgeAlreadyExecutedError extends BridgeError {
   constructor(
     message: string,
@@ -165,7 +204,7 @@ export class BridgeAlreadyExecutedError extends BridgeError {
     super({
       message,
       code: "ALREADY_EXECUTED",
-      outcome: "retry",
+      outcome: "fatal",
       stage: "execute",
       route: args.route,
       chain: args.chain,
