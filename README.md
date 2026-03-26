@@ -31,14 +31,9 @@ bun run build
 ### Bridging SOL from Solana to Base
 
 ```ts
-import { createBridgeClient } from "./bridge-sdk";
-import {
-  base,
-  solanaMainnet,
-  makeSolanaAdapter,
-  makeEvmAdapter,
-} from "./bridge-sdk/chains";
-import { loadSolanaKeypair } from "./bridge-sdk/node"; // Node.js only
+import { createBridgeClient } from "bridge-sdk";
+import { base, solanaMainnet, makeEvmAdapter, makeSolanaAdapter } from "bridge-sdk/chains";
+import { loadSolanaKeypair } from "bridge-sdk/node"; // Node.js only
 
 async function main() {
   // Pre-load the Solana keypair before creating the adapter (Node.js only)
@@ -78,11 +73,76 @@ async function main() {
 main().catch(console.error);
 ```
 
-#### Overriding deployments (advanced)
+## Network Configuration
 
-If you need to target additional networks (e.g. Base Sepolia / Solana devnet) or
-use custom deployments, pass `deployments` overrides to:
-`createBridgeClient({ bridgeConfig: { deployments: ... } })`.
+The SDK ships with hardcoded **mainnet** deployment addresses. To target
+additional networks (e.g. Solana devnet, Base Sepolia) or use custom contract
+deployments, pass `deployments` overrides to `createBridgeClient()`.
+
+### Default deployment addresses
+
+| Domain   | Chain ID         | Field            | Type         | Description                    |
+| -------- | ---------------- | ---------------- | ------------ | ------------------------------ |
+| `solana` | `solana:mainnet` | `bridgeProgram`  | `SolAddress` | Solana bridge program address  |
+| `solana` | `solana:mainnet` | `relayerProgram` | `SolAddress` | Solana relayer program address |
+| `base`   | `eip155:8453`    | `bridgeContract` | `Hex`        | Base bridge contract address   |
+
+### Devnet / testnet configuration example
+
+The SDK exports `solanaDevnet` and `baseSepolia` chain objects you can use
+alongside your own deployment addresses:
+
+```ts
+import { address } from "@solana/kit";
+import { createBridgeClient } from "bridge-sdk";
+import { baseSepolia, solanaDevnet, makeEvmAdapter, makeSolanaAdapter } from "bridge-sdk/chains";
+import { loadSolanaKeypair } from "bridge-sdk/node"; // Node.js only
+
+const payer = await loadSolanaKeypair("~/.config/solana/id.json");
+
+const client = createBridgeClient({
+  chains: {
+    solana: makeSolanaAdapter({
+      rpcUrl: "https://api.devnet.solana.com",
+      payer,
+      chain: solanaDevnet,
+    }),
+    base: makeEvmAdapter({
+      chain: baseSepolia,
+      rpcUrl: "https://sepolia.base.org",
+      wallet: { type: "none" },
+    }),
+  },
+  bridgeConfig: {
+    deployments: {
+      solana: {
+        // All fields are required when adding a new chain ID
+        [solanaDevnet.id]: {
+          bridgeProgram: address("<YOUR_DEVNET_BRIDGE_PROGRAM>"),
+          relayerProgram: address("<YOUR_DEVNET_RELAYER_PROGRAM>"),
+        },
+      },
+      base: {
+        [baseSepolia.id]: {
+          bridgeContract: "0x<YOUR_SEPOLIA_BRIDGE_CONTRACT>",
+        },
+      },
+    },
+  },
+});
+```
+
+### Merge behavior
+
+Overrides are **merged** with the built-in mainnet defaults, not replaced:
+
+- **Existing chain IDs** — individual fields are overridden; unspecified fields
+  keep their defaults.
+- **New chain IDs** (e.g. `solana:devnet`) — all required fields must be
+  provided or the entry is ignored.
+
+This means you can override a single mainnet address without losing the others,
+or add devnet/testnet entries while keeping the mainnet defaults intact.
 
 ## Examples
 
