@@ -633,7 +633,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     // 1. Initialize the call buffer
     const { bufferAddress, signature: initSig } =
       await this.solanaEngine.initializeCallBuffer({
-        callType: call.ty ?? CallType.Call,
+        callType: (call.ty as CallType | undefined) ?? CallType.Call,
         to: toBytes(call.to),
         value: call.value,
         initialData: firstChunk,

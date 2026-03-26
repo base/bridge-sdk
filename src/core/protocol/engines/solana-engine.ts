@@ -1112,7 +1112,7 @@ export class SolanaEngine {
       : call.data;
 
     return {
-      ty: call.ty ?? CallType.Call,
+      ty: (call.ty as CallType | undefined) ?? CallType.Call,
       to: toBytes(call.to),
       value: call.value,
       data: Buffer.from(callData, "hex"),
