@@ -14,11 +14,10 @@ import {
 } from "../../errors";
 import { pollingMonitor } from "../../monitor/polling";
 import type {
+  BridgeContext,
   BridgeOperation,
   BridgeRequest,
-  BridgeContext,
   BridgeRoute,
-  RouteStep,
   DestinationCall,
   EvmCall,
   ExecuteOptions,
@@ -32,6 +31,7 @@ import type {
   QuoteRequest,
   RouteAdapter,
   RouteCapabilities,
+  RouteStep,
   StatusOptions,
 } from "../../types";
 import { isEvmDestinationCall } from "../../utils";
