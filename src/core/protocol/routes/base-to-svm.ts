@@ -11,10 +11,10 @@ import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
 import type { Ix } from "../../../clients/ts/src/bridge";
 import { fetchMaybeIncomingMessage } from "../../../clients/ts/src/bridge";
 import {
-  BridgeAlreadyExecutedError,
-  BridgeNotProvenError,
+  BridgeInvariantViolationError,
   BridgeProofNotAvailableError,
   BridgeUnsupportedActionError,
+  wrapEngineError,
 } from "../../errors";
 import { pollingMonitor } from "../../monitor/polling";
 import type {
@@ -338,7 +338,10 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
    */
   private async initiateCall(req: BridgeRequest): Promise<BridgeOperation> {
     if (req.action.kind !== "call") {
-      throw new Error("Expected call action");
+      throw new BridgeInvariantViolationError("Expected call action", {
+        stage: "initiate",
+        route: req.route,
+      });
     }
 
     const destCall = req.action.call;
@@ -351,7 +354,10 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     }
 
     const ixs = this.convertToIx(destCall.call.instructions);
-    const txHash = await this.baseEngine.bridgeCall({ ixs });
+    const txHash = await wrapEngineError(
+      () => this.baseEngine.bridgeCall({ ixs }),
+      { route: req.route, chain: req.route.sourceChain, stage: "initiate" },
+    );
 
     return this.buildOperation(req, txHash);
   }
@@ -361,7 +367,10 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
    */
   private async initiateTransfer(req: BridgeRequest): Promise<BridgeOperation> {
     if (req.action.kind !== "transfer") {
-      throw new Error("Expected transfer action");
+      throw new BridgeInvariantViolationError("Expected transfer action", {
+        stage: "initiate",
+        route: req.route,
+      });
     }
 
     if (req.action.asset.kind !== "token") {
@@ -382,16 +391,21 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
     // Convert optional SolanaCall to Ix[] for transfer+call
     const ixs = this.extractSolanaIxs(req.action.call);
+    const { recipient, amount } = req.action;
 
-    const txHash = await this.baseEngine.bridgeToken({
-      transfer: {
-        localToken,
-        remoteToken: solAddress(mint),
-        to: solAddress(req.action.recipient),
-        amount: req.action.amount,
-      },
-      ixs,
-    });
+    const txHash = await wrapEngineError(
+      () =>
+        this.baseEngine.bridgeToken({
+          transfer: {
+            localToken,
+            remoteToken: solAddress(mint),
+            to: solAddress(recipient),
+            amount,
+          },
+          ixs,
+        }),
+      { route: req.route, chain: req.route.sourceChain, stage: "initiate" },
+    );
 
     return this.buildOperation(req, txHash);
   }
@@ -477,19 +491,35 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       );
     }
 
+    const proveOnSource = {
+      route: ref.route,
+      chain: ref.route.sourceChain,
+      stage: "prove" as const,
+    };
+    const proveOnDest = {
+      route: ref.route,
+      chain: ref.route.destinationChain,
+      stage: "prove" as const,
+    };
+
     const blockNumber =
       opts?.sourceBlockNumber ??
-      (await this.solanaEngine.getLatestBaseBlockNumber());
+      (await wrapEngineError(
+        () => this.solanaEngine.getLatestBaseBlockNumber(),
+        proveOnDest,
+      ));
 
-    const { event, rawProof } = await this.baseEngine.generateProof(
-      txHash,
-      blockNumber,
-      { route: ref.route, chain: ref.route.sourceChain },
+    const { event, rawProof } = await wrapEngineError(
+      () =>
+        this.baseEngine.generateProof(txHash, blockNumber, {
+          route: ref.route,
+          chain: ref.route.sourceChain,
+        }),
+      proveOnSource,
     );
-    const res = await this.solanaEngine.handleProveMessage(
-      event,
-      rawProof,
-      blockNumber,
+    const res = await wrapEngineError(
+      () => this.solanaEngine.handleProveMessage(event, rawProof, blockNumber),
+      proveOnDest,
     );
 
     if (!res.signature) {
@@ -514,27 +544,15 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       });
     }
 
-    try {
-      const sig = await this.solanaEngine.handleExecuteMessage(messageHash);
-      return { messageRef: ref, executionTx: sig };
-    } catch (e) {
-      if (e instanceof BridgeAlreadyExecutedError) {
-        throw new BridgeAlreadyExecutedError(
-          "Message already executed on SVM",
-          {
-            route: ref.route,
-            chain: ref.route.destinationChain,
-          },
-        );
-      }
-      if (e instanceof BridgeNotProvenError) {
-        throw new BridgeNotProvenError("Message not proven on SVM", {
-          route: ref.route,
-          chain: ref.route.destinationChain,
-        });
-      }
-      throw e;
-    }
+    const sig = await wrapEngineError(
+      () => this.solanaEngine.handleExecuteMessage(messageHash),
+      {
+        route: ref.route,
+        chain: ref.route.destinationChain,
+        stage: "execute",
+      },
+    );
+    return { messageRef: ref, executionTx: sig };
   }
 
   async status(
@@ -550,9 +568,17 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
 
     const pda = await this.deriveIncomingMessagePdaCached(messageHash);
 
-    const maybe = await fetchMaybeIncomingMessage(this.solanaRpc, pda, {
-      abortSignal: opts?.signal,
-    });
+    const maybe = await wrapEngineError(
+      () =>
+        fetchMaybeIncomingMessage(this.solanaRpc, pda, {
+          abortSignal: opts?.signal,
+        }),
+      {
+        route: ref.route,
+        chain: ref.route.destinationChain,
+        stage: "monitor",
+      },
+    );
 
     if (!maybe.exists) {
       return { type: "Initiated", at, sourceTx: ref.derived?.txHash };
@@ -596,9 +622,10 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     sender: Hex;
     data: Hex;
   }> {
-    const receipt = await this.evm.publicClient.getTransactionReceipt({
-      hash: txHash,
-    });
+    const receipt = await wrapEngineError(
+      () => this.evm.publicClient.getTransactionReceipt({ hash: txHash }),
+      { route: context.route, chain: context.chain, stage: "initiate" },
+    );
     const [e, ...rest] = decodeMessageInitiatedEvents(receipt.logs);
 
     if (!e || rest.length > 0) {

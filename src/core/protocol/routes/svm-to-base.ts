@@ -7,14 +7,18 @@ import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
 import { CallType } from "../../../clients/ts/src/bridge";
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import {
+  BridgeInvariantViolationError,
   BridgeUnsupportedActionError,
   BridgeUnsupportedStepError,
+  wrapEngineError,
 } from "../../errors";
 import { pollingMonitor } from "../../monitor/polling";
 import type {
   BridgeOperation,
   BridgeRequest,
+  BridgeContext,
   BridgeRoute,
+  RouteStep,
   DestinationCall,
   EvmCall,
   ExecuteOptions,
@@ -166,7 +170,10 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     const warnings: string[] = [];
 
     // Fetch on-chain config for fee estimation
-    const { relayerGasConfig } = await this.solanaEngine.getGasConfigs();
+    const { relayerGasConfig } = await wrapEngineError(
+      () => this.solanaEngine.getGasConfigs(),
+      { route: req.route, chain: req.route.sourceChain, stage: "initiate" },
+    );
 
     // Estimate source chain fees (Solana transaction fees)
     const sourceGasFee = SOLANA_BASE_TX_FEE + SOLANA_COMPUTE_UNIT_BUFFER;
@@ -287,7 +294,10 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
   /** Initiate a pure call action (EVM call only, no transfer). */
   private async initiateCall(req: BridgeRequest): Promise<BridgeOperation> {
     if (req.action.kind !== "call") {
-      throw new Error("Expected call action");
+      throw new BridgeInvariantViolationError("Expected call action", {
+        stage: "initiate",
+        route: req.route,
+      });
     }
 
     const evmCall = this.extractEvmCall(req.action.call);
@@ -323,7 +333,10 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     req: BridgeRequest,
   ): Promise<BridgeOperation> {
     if (req.action.kind !== "transfer") {
-      throw new Error("Expected transfer action");
+      throw new BridgeInvariantViolationError("Expected transfer action", {
+        stage: "initiate",
+        route: req.route,
+      });
     }
 
     const to = req.action.recipient as `0x${string}`;
@@ -363,7 +376,10 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     req: BridgeRequest,
   ): Promise<BridgeOperation> {
     if (req.action.kind !== "transfer") {
-      throw new Error("Expected transfer action");
+      throw new BridgeInvariantViolationError("Expected transfer action", {
+        stage: "initiate",
+        route: req.route,
+      });
     }
 
     const mint =
@@ -417,7 +433,10 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     req: BridgeRequest,
   ): Promise<BridgeOperation> {
     if (req.action.kind !== "transfer" || req.action.asset.kind !== "wrapped") {
-      throw new Error("Expected wrapped transfer action");
+      throw new BridgeInvariantViolationError(
+        "Expected wrapped transfer action",
+        { stage: "initiate", route: req.route },
+      );
     }
 
     const to = req.action.recipient as `0x${string}`;
@@ -578,6 +597,12 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       bufferAddress: SolAddress,
     ) => Promise<{ outgoingPda: SolAddress; signature: Signature }>,
   ): Promise<BridgeOperation> {
+    const initCtx = {
+      route: req.route,
+      chain: req.route.sourceChain,
+      stage: "initiate" as const,
+    };
+
     const bufferableData = this.getBufferableCallData(evmCall);
     if (bufferableData) {
       // evmCall is guaranteed non-null when bufferableData is non-null
@@ -586,10 +611,11 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
         evmCall!,
         bufferableData,
         gasLimit,
+        initCtx,
         bufferedFn,
       );
     }
-    const { outgoingPda, signature } = await inlineFn();
+    const { outgoingPda, signature } = await wrapEngineError(inlineFn, initCtx);
     return this.buildOperation({ req, outgoingPda, signature, gasLimit });
   }
 
@@ -622,6 +648,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     call: EvmCall,
     callData: Uint8Array,
     gasLimit: bigint,
+    initCtx: BridgeContext & { stage: RouteStep },
     bridgeFn: (
       bufferAddress: SolAddress,
     ) => Promise<{ outgoingPda: SolAddress; signature: Signature }>,
@@ -631,14 +658,17 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     const auxiliarySignatures: string[] = [];
 
     // 1. Initialize the call buffer
-    const { bufferAddress, signature: initSig } =
-      await this.solanaEngine.initializeCallBuffer({
-        callType: (call.ty as CallType | undefined) ?? CallType.Call,
-        to: toBytes(call.to),
-        value: call.value,
-        initialData: firstChunk,
-        maxDataLen: BigInt(callData.length),
-      });
+    const { bufferAddress, signature: initSig } = await wrapEngineError(
+      () =>
+        this.solanaEngine.initializeCallBuffer({
+          callType: (call.ty as CallType | undefined) ?? CallType.Call,
+          to: toBytes(call.to),
+          value: call.value,
+          initialData: firstChunk,
+          maxDataLen: BigInt(callData.length),
+        }),
+      initCtx,
+    );
     auxiliarySignatures.push(initSig);
 
     // Once the buffer is initialized, any failure in appends or the bridge
@@ -654,16 +684,22 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
           offset,
           offset + APPEND_CHUNK_SIZE,
         );
-        const { signature: appendSig } =
-          await this.solanaEngine.appendToCallBuffer({
-            bufferAddress,
-            data: chunk,
-          });
+        const { signature: appendSig } = await wrapEngineError(
+          () =>
+            this.solanaEngine.appendToCallBuffer({
+              bufferAddress,
+              data: chunk,
+            }),
+          initCtx,
+        );
         auxiliarySignatures.push(appendSig);
       }
 
       // 3. Execute the buffered bridge instruction (which also closes the buffer)
-      const result = await bridgeFn(bufferAddress);
+      const result = await wrapEngineError(
+        () => bridgeFn(bufferAddress),
+        initCtx,
+      );
       return this.buildOperation({
         req,
         outgoingPda: result.outgoingPda,
@@ -697,14 +733,24 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       });
     }
 
-    const outgoing = await this.solanaEngine.getOutgoingMessage(
-      solAddress(ref.source.id.value),
+    const outgoing = await wrapEngineError(
+      () =>
+        this.solanaEngine.getOutgoingMessage(solAddress(ref.source.id.value)),
+      { route: ref.route, chain: ref.route.sourceChain, stage: "execute" },
     );
 
-    const tx = await this.baseEngine.executeMessage(
-      outgoing,
-      { route: ref.route, chain: ref.route.destinationChain },
-      { gasLimit: opts?.relay?.gasLimit },
+    const tx = await wrapEngineError(
+      () =>
+        this.baseEngine.executeMessage(
+          outgoing,
+          { route: ref.route, chain: ref.route.destinationChain },
+          { gasLimit: opts?.relay?.gasLimit },
+        ),
+      {
+        route: ref.route,
+        chain: ref.route.destinationChain,
+        stage: "execute",
+      },
     );
     return { messageRef: ref, executionTx: tx };
   }
@@ -719,23 +765,31 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
 
     if (!outerHash) return { type: "Unknown", at };
 
-    const [success, failure] = await this.evm.publicClient.multicall({
-      contracts: [
-        {
-          address: this.evmDeployment.bridgeContract,
-          abi: BRIDGE_ABI,
-          functionName: "successes",
-          args: [outerHash],
-        },
-        {
-          address: this.evmDeployment.bridgeContract,
-          abi: BRIDGE_ABI,
-          functionName: "failures",
-          args: [outerHash],
-        },
-      ],
-      allowFailure: false,
-    });
+    const [success, failure] = await wrapEngineError(
+      () =>
+        this.evm.publicClient.multicall({
+          contracts: [
+            {
+              address: this.evmDeployment.bridgeContract,
+              abi: BRIDGE_ABI,
+              functionName: "successes",
+              args: [outerHash],
+            },
+            {
+              address: this.evmDeployment.bridgeContract,
+              abi: BRIDGE_ABI,
+              functionName: "failures",
+              args: [outerHash],
+            },
+          ],
+          allowFailure: false,
+        }),
+      {
+        route: ref.route,
+        chain: ref.route.destinationChain,
+        stage: "monitor",
+      },
+    );
 
     if (failure) {
       return {
@@ -764,8 +818,13 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     outgoingPda: SolAddress,
     gasLimit: bigint,
   ): Promise<Hash> {
-    const outgoing = await this.solanaEngine.getOutgoingMessage(
-      solAddress(outgoingPda),
+    const outgoing = await wrapEngineError(
+      () => this.solanaEngine.getOutgoingMessage(solAddress(outgoingPda)),
+      {
+        route: this.route,
+        chain: this.route.sourceChain,
+        stage: "initiate",
+      },
     );
     const { outerHash } = buildEvmIncomingMessage(outgoing, { gasLimit });
     return outerHash as Hash;

@@ -21,7 +21,6 @@ import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
 import { sleep } from "../../../utils/time";
 import {
-  type BridgeError,
   BridgeExecutionRevertedError,
   BridgeInvariantViolationError,
   BridgeMessageFailedError,
@@ -29,7 +28,7 @@ import {
   BridgeTimeoutError,
   BridgeValidationError,
 } from "../../errors";
-import type { BridgeContext, EvmCall } from "../../types";
+import type { BridgeContext, EvmCall, RouteStep } from "../../types";
 import { buildEvmIncomingMessage, bytes32FromSolanaPubkey } from "../encoding";
 import { decodeMessageInitiatedEvents } from "../events";
 import {
@@ -97,7 +96,7 @@ export class BaseEngine {
     return this.validatorAddressPromise;
   }
 
-  private requireWallet(stage: BridgeError["stage"] = "initiate") {
+  private requireWallet(stage: RouteStep = "initiate") {
     if (!this.walletClient || !this.account) {
       throw new BridgeValidationError(
         "Base wallet client not initialized (missing privateKey)",

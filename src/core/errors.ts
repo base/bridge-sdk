@@ -1,4 +1,41 @@
-import type { BridgeRoute, ChainId } from "./types";
+import type { BridgeContext, BridgeRoute, ChainId, RouteStep } from "./types";
+
+/**
+ * Wrap an async call so errors always carry route/chain/stage context.
+ * Preserves BridgeError subclass identity by patching missing fields
+ * onto the original instance rather than re-wrapping.
+ */
+export async function wrapEngineError<T>(
+  fn: () => Promise<T>,
+  context: BridgeContext & { stage: RouteStep },
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof BridgeError) {
+      if (e.route && e.chain) throw e;
+      // Patch missing context onto the original instance so that subclass
+      // identity (instanceof) and the `name` property are preserved.
+      // TypeScript `readonly` is compile-time only; plain assignment works.
+      if (!e.route) {
+        (e as { route: BridgeRoute }).route = context.route;
+      }
+      if (!e.chain) {
+        (e as { chain: ChainId }).chain = context.chain;
+      }
+      throw e;
+    }
+    throw new BridgeError({
+      message: e instanceof Error ? e.message : String(e),
+      code: "RPC_ERROR",
+      outcome: "retry",
+      stage: context.stage,
+      route: context.route,
+      chain: context.chain,
+      cause: e,
+    });
+  }
+}
 
 /**
  * Core error base class.
@@ -11,7 +48,7 @@ import type { BridgeRoute, ChainId } from "./types";
 export class BridgeError extends Error {
   readonly code: BridgeErrorCode;
   readonly outcome: ActionableOutcome;
-  readonly stage: "initiate" | "prove" | "execute" | "monitor";
+  readonly stage: RouteStep;
   readonly route?: BridgeRoute;
   readonly chain?: ChainId;
 
@@ -19,7 +56,7 @@ export class BridgeError extends Error {
     message: string;
     code: BridgeErrorCode;
     outcome: ActionableOutcome;
-    stage: BridgeError["stage"];
+    stage: RouteStep;
     route?: BridgeRoute;
     chain?: ChainId;
     cause?: unknown;
@@ -105,7 +142,7 @@ export class BridgeTimeoutError extends BridgeError {
   constructor(
     message: string,
     args: {
-      stage: BridgeError["stage"];
+      stage: RouteStep;
       route?: BridgeRoute;
       chain?: ChainId;
       cause?: unknown;
@@ -161,7 +198,7 @@ export class BridgeExecutionRevertedError extends BridgeError {
   constructor(
     message: string,
     args: {
-      stage: BridgeError["stage"];
+      stage: RouteStep;
       route?: BridgeRoute;
       chain?: ChainId;
       cause?: unknown;
@@ -217,7 +254,7 @@ export class BridgeInvariantViolationError extends BridgeError {
   constructor(
     message: string,
     args?: {
-      stage?: BridgeError["stage"];
+      stage?: RouteStep;
       route?: BridgeRoute;
       chain?: ChainId;
       cause?: unknown;
@@ -239,7 +276,7 @@ export class BridgeValidationError extends BridgeError {
   constructor(
     message: string,
     args?: {
-      stage?: BridgeError["stage"];
+      stage?: RouteStep;
       route?: BridgeRoute;
       cause?: unknown;
     },
