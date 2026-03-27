@@ -5,11 +5,14 @@ import {
   type Hash,
   type Hex,
   http,
+  isHex,
   type PublicClient,
   type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { BridgeValidationError } from "../../../core/errors";
 import type { ChainRef } from "../../../core/types";
+import { validateRpcUrl } from "../../../core/validation";
 import type {
   BridgeEvmChainRef,
   EvmAdapterConfig,
@@ -53,6 +56,29 @@ function resolveChain(config: EvmAdapterConfig): {
 }
 
 export function makeEvmAdapter(config: EvmAdapterConfig): EvmChainAdapter {
+  validateRpcUrl(config.rpcUrl);
+
+  if (config.chain == null) {
+    if (
+      config.chainId == null ||
+      !Number.isInteger(config.chainId) ||
+      config.chainId < 1
+    ) {
+      throw new BridgeValidationError(
+        `Invalid EVM adapter config: chainId must be a positive integer, got ${String(config.chainId)}`,
+      );
+    }
+  }
+
+  const wallet = config.wallet ?? { type: "none" as const };
+  if (wallet.type === "privateKey") {
+    if (!isHex(wallet.key) || wallet.key.length !== 66) {
+      throw new BridgeValidationError(
+        "Invalid EVM adapter config: wallet private key must be a 0x-prefixed 64-character hex string",
+      );
+    }
+  }
+
   const { chainId, viemChain } = resolveChain(config);
   const chain: ChainRef = { id: `eip155:${chainId}` };
 
@@ -66,7 +92,6 @@ export function makeEvmAdapter(config: EvmAdapterConfig): EvmChainAdapter {
   let walletClient: WalletClient | undefined;
   let privateKey: Hex | undefined;
 
-  const wallet = config.wallet ?? { type: "none" as const };
   if (wallet.type === "privateKey") {
     const account = privateKeyToAccount(wallet.key);
     walletClient = createWalletClient({

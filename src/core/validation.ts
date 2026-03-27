@@ -16,6 +16,29 @@ import {
 
 const MAX_TRANSFER_AMOUNT = 2n ** 64n - 1n;
 
+export function validateRpcUrl(rpcUrl: string): void {
+  if (rpcUrl.trim() === "") {
+    throw new BridgeValidationError(
+      `Invalid RPC URL: expected a non-empty HTTP(S) URL, got "${truncate(String(rpcUrl))}"`,
+    );
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rpcUrl);
+  } catch {
+    throw new BridgeValidationError(
+      `Invalid RPC URL: not a valid URL, got "${truncate(rpcUrl)}"`,
+    );
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new BridgeValidationError(
+      `Invalid RPC URL: expected http: or https: scheme, got "${parsed.protocol}" in "${truncate(rpcUrl)}"`,
+    );
+  }
+}
+
 export function validateAction(action: BridgeAction, route: BridgeRoute): void {
   if (action.kind === "transfer") {
     validateAmount(action.amount);

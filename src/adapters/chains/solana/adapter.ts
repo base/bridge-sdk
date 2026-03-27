@@ -8,6 +8,7 @@ import {
   fetchOutgoingMessage,
   type OutgoingMessage,
 } from "../../../clients/ts/src/bridge";
+import { validateRpcUrl } from "../../../core/validation";
 import type { SolanaAdapterConfig, SolanaChainAdapter } from "./types";
 
 /**
@@ -28,6 +29,8 @@ import type { SolanaAdapterConfig, SolanaChainAdapter } from "./types";
 export function makeSolanaAdapter(
   config: SolanaAdapterConfig,
 ): SolanaChainAdapter {
+  validateRpcUrl(config.rpcUrl);
+
   const payer = config.payer;
   const chain = config.chain ?? solanaMainnet;
   const rpc = createSolanaRpc(config.rpcUrl);
