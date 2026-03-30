@@ -1,3 +1,7 @@
+import {
+  SOLANA_DEVNET_CHAIN_ID,
+  SOLANA_MAINNET_CHAIN_ID,
+} from "../core/protocol/router";
 import type { ChainRef } from "../core/types";
 
 type BridgeSolanaChain = ChainRef & {
@@ -6,11 +10,11 @@ type BridgeSolanaChain = ChainRef & {
 };
 
 export const solanaMainnet: BridgeSolanaChain = {
-  id: "solana:mainnet",
+  id: SOLANA_MAINNET_CHAIN_ID,
   cluster: "mainnet",
 };
 
 export const solanaDevnet: BridgeSolanaChain = {
-  id: "solana:devnet",
+  id: SOLANA_DEVNET_CHAIN_ID,
   cluster: "devnet",
 };

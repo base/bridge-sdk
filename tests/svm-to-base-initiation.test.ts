@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  BASE_MAINNET_CHAIN_ID,
+  SOLANA_MAINNET_CHAIN_ID,
+} from "../src/core/protocol/router";
 import { SvmToBaseRouteAdapter } from "../src/core/protocol/routes/svm-to-base";
 import type { BridgeRequest, BridgeRoute } from "../src/core/types";
 
@@ -16,8 +20,8 @@ const FAKE_BRIDGE_SIG =
   "BridgeSig1111111111111111111111111111111111111111111111111111111111111111111111111111111111" as const;
 
 const route: BridgeRoute = {
-  sourceChain: "solana:mainnet",
-  destinationChain: "eip155:8453",
+  sourceChain: SOLANA_MAINNET_CHAIN_ID,
+  destinationChain: BASE_MAINNET_CHAIN_ID,
 };
 
 /**

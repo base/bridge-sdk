@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { BASE_MAINNET_CHAIN_ID } from "../src/core/protocol/router";
+import {
+  BASE_MAINNET_CHAIN_ID,
+  SOLANA_MAINNET_CHAIN_ID,
+} from "../src/core/protocol/router";
 import type {
   BridgeRoute,
   FeeEstimate,
@@ -26,7 +29,7 @@ describe("Quote types", () => {
 
   test("Quote structure contains required fields", () => {
     const route: BridgeRoute = {
-      sourceChain: "solana:mainnet",
+      sourceChain: SOLANA_MAINNET_CHAIN_ID,
       destinationChain: BASE_MAINNET_CHAIN_ID,
     };
 
@@ -53,7 +56,7 @@ describe("Quote types", () => {
 
   test("Quote supports optional destination and relay fees", () => {
     const route: BridgeRoute = {
-      sourceChain: "solana:mainnet",
+      sourceChain: SOLANA_MAINNET_CHAIN_ID,
       destinationChain: BASE_MAINNET_CHAIN_ID,
     };
 
@@ -88,7 +91,7 @@ describe("Quote types", () => {
   test("Quote supports optional limits and warnings", () => {
     const route: BridgeRoute = {
       sourceChain: BASE_MAINNET_CHAIN_ID,
-      destinationChain: "solana:mainnet",
+      destinationChain: SOLANA_MAINNET_CHAIN_ID,
     };
 
     const quote: Quote = {
@@ -122,7 +125,7 @@ describe("Quote types", () => {
 
   test("QuoteRequest mirrors BridgeRequest structure", () => {
     const route: BridgeRoute = {
-      sourceChain: "solana:mainnet",
+      sourceChain: SOLANA_MAINNET_CHAIN_ID,
       destinationChain: BASE_MAINNET_CHAIN_ID,
     };
 
@@ -154,7 +157,7 @@ describe("Quote types", () => {
 
   test("QuoteRequest supports transfer action", () => {
     const route: BridgeRoute = {
-      sourceChain: "solana:mainnet",
+      sourceChain: SOLANA_MAINNET_CHAIN_ID,
       destinationChain: BASE_MAINNET_CHAIN_ID,
     };
 

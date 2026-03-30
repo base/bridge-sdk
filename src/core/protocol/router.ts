@@ -21,6 +21,11 @@ import { SvmToBaseRouteAdapter } from "./routes/svm-to-base";
  */
 export const BASE_MAINNET_CHAIN_ID = "eip155:8453";
 export const BASE_SEPOLIA_CHAIN_ID = "eip155:84532";
+
+/** Spoke chain identifiers. */
+export const SOLANA_MAINNET_CHAIN_ID = "solana:mainnet";
+export const SOLANA_DEVNET_CHAIN_ID = "solana:devnet";
+
 export const HUB_CHAIN_IDS = [
   BASE_MAINNET_CHAIN_ID,
   BASE_SEPOLIA_CHAIN_ID,

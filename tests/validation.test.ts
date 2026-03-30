@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { BridgeValidationError } from "../src/core/errors";
 import {
+  BASE_MAINNET_CHAIN_ID,
+  BASE_SEPOLIA_CHAIN_ID,
+  SOLANA_DEVNET_CHAIN_ID,
+  SOLANA_MAINNET_CHAIN_ID,
+} from "../src/core/protocol/router";
+import {
   type BridgeAction,
   type BridgeRoute,
   type DestinationCall,
@@ -251,12 +257,12 @@ describe("validateSolanaAddress", () => {
 
 describe("validateRecipientAddress", () => {
   const evmRoute = {
-    sourceChain: "solana:mainnet",
-    destinationChain: "eip155:8453",
+    sourceChain: SOLANA_MAINNET_CHAIN_ID,
+    destinationChain: BASE_MAINNET_CHAIN_ID,
   };
   const solanaRoute = {
-    sourceChain: "eip155:8453",
-    destinationChain: "solana:mainnet",
+    sourceChain: BASE_MAINNET_CHAIN_ID,
+    destinationChain: SOLANA_MAINNET_CHAIN_ID,
   };
 
   test("validates as EVM when destination is an EVM chain", () => {
@@ -285,8 +291,8 @@ describe("validateRecipientAddress", () => {
 
   test("dispatches correctly for devnet Solana destination", () => {
     const devnetRoute = {
-      sourceChain: "eip155:84532",
-      destinationChain: "solana:devnet",
+      sourceChain: BASE_SEPOLIA_CHAIN_ID,
+      destinationChain: SOLANA_DEVNET_CHAIN_ID,
     };
     expect(() =>
       validateRecipientAddress("11111111111111111111111111111111", devnetRoute),
@@ -629,12 +635,12 @@ describe("validateDestinationCallFields", () => {
   const VALID_SOL = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
   const SYSTEM_PROGRAM = "11111111111111111111111111111111";
   const evmRoute: BridgeRoute = {
-    sourceChain: "solana:mainnet",
-    destinationChain: "eip155:8453",
+    sourceChain: SOLANA_MAINNET_CHAIN_ID,
+    destinationChain: BASE_MAINNET_CHAIN_ID,
   };
   const solanaRoute: BridgeRoute = {
-    sourceChain: "eip155:8453",
-    destinationChain: "solana:mainnet",
+    sourceChain: BASE_MAINNET_CHAIN_ID,
+    destinationChain: SOLANA_MAINNET_CHAIN_ID,
   };
 
   test("validates EVM call `to` address", () => {
@@ -894,12 +900,12 @@ describe("validateDestinationCallFields", () => {
 
 describe("validateAction", () => {
   const evmRoute: BridgeRoute = {
-    sourceChain: "solana:mainnet",
-    destinationChain: "eip155:8453",
+    sourceChain: SOLANA_MAINNET_CHAIN_ID,
+    destinationChain: BASE_MAINNET_CHAIN_ID,
   };
   const solanaRoute: BridgeRoute = {
-    sourceChain: "eip155:8453",
-    destinationChain: "solana:mainnet",
+    sourceChain: BASE_MAINNET_CHAIN_ID,
+    destinationChain: SOLANA_MAINNET_CHAIN_ID,
   };
 
   const VALID_EVM = "0x644e3dedb0e4f83bfcf8f9992964d240224b74dc";

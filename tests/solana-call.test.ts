@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { BridgeValidationError } from "../src/core/errors";
+import {
+  BASE_MAINNET_CHAIN_ID,
+  SOLANA_DEVNET_CHAIN_ID,
+  SOLANA_MAINNET_CHAIN_ID,
+} from "../src/core/protocol/router";
 import type {
   BridgeRoute,
   DestinationCall,
@@ -15,15 +20,15 @@ import { validateDestinationCall } from "../src/core/validation";
 
 describe("isSolanaChainId", () => {
   test("returns true for solana:mainnet", () => {
-    expect(isSolanaChainId("solana:mainnet")).toBe(true);
+    expect(isSolanaChainId(SOLANA_MAINNET_CHAIN_ID)).toBe(true);
   });
 
   test("returns true for solana:devnet", () => {
-    expect(isSolanaChainId("solana:devnet")).toBe(true);
+    expect(isSolanaChainId(SOLANA_DEVNET_CHAIN_ID)).toBe(true);
   });
 
   test("returns false for EVM chain", () => {
-    expect(isSolanaChainId("eip155:8453")).toBe(false);
+    expect(isSolanaChainId(BASE_MAINNET_CHAIN_ID)).toBe(false);
   });
 });
 
@@ -75,13 +80,13 @@ describe("isEvmDestinationCall", () => {
 
 describe("validateDestinationCall", () => {
   const evmRoute: BridgeRoute = {
-    sourceChain: "solana:mainnet",
-    destinationChain: "eip155:8453",
+    sourceChain: SOLANA_MAINNET_CHAIN_ID,
+    destinationChain: BASE_MAINNET_CHAIN_ID,
   };
 
   const svmRoute: BridgeRoute = {
-    sourceChain: "eip155:8453",
-    destinationChain: "solana:mainnet",
+    sourceChain: BASE_MAINNET_CHAIN_ID,
+    destinationChain: SOLANA_MAINNET_CHAIN_ID,
   };
 
   const evmCall: EvmCall = {

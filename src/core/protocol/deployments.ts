@@ -1,26 +1,39 @@
 import { address as solAddress } from "@solana/kit";
 import type { BridgeConfig, ChainId } from "../types";
-import { BASE_MAINNET_CHAIN_ID } from "./router";
+import {
+  BASE_MAINNET_CHAIN_ID,
+  BASE_SEPOLIA_CHAIN_ID,
+  SOLANA_DEVNET_CHAIN_ID,
+  SOLANA_MAINNET_CHAIN_ID,
+} from "./router";
 
 /**
  * Built-in bridge deployments bundled with the SDK.
  *
- * These defaults intentionally only cover networks we can confidently hardcode.
- * If you need additional networks (e.g. devnet, sepolia), pass `deployments`
- * overrides via `createBridgeClient({ bridgeConfig: { deployments: ... } })`.
+ * Includes mainnet and devnet/testnet defaults so that the exported chain
+ * objects (`solanaDevnet`, `baseSepolia`) work out-of-the-box. To override
+ * any address, pass `deployments` overrides via
+ * `createBridgeClient({ bridgeConfig: { deployments: ... } })`.
  */
 export const DEFAULT_BRIDGE_DEPLOYMENTS: BridgeConfig["deployments"] = {
   solana: {
-    // Solana mainnet programs
-    "solana:mainnet": {
+    [SOLANA_MAINNET_CHAIN_ID]: {
       bridgeProgram: solAddress("HNCne2FkVaNghhjKXapxJzPaBvAKDG1Ge3gqhZyfVWLM"),
       relayerProgram: solAddress("g1et5VenhfJHJwsdJsDbxWZuotD5H4iELNG61kS4fb9"),
     },
+    [SOLANA_DEVNET_CHAIN_ID]: {
+      bridgeProgram: solAddress("7c6mteAcTXaQ1MFBCrnuzoZVTTAEfZwa6wgy4bqX3KXC"),
+      relayerProgram: solAddress(
+        "56MBBEYAtQAdjT4e1NzHD8XaoyRSTvfgbSVVcEcHj51H",
+      ),
+    },
   },
   base: {
-    // Base mainnet bridge contract
     [BASE_MAINNET_CHAIN_ID]: {
       bridgeContract: "0x3eff766C76a1be2Ce1aCF2B69c78bCae257D5188",
+    },
+    [BASE_SEPOLIA_CHAIN_ID]: {
+      bridgeContract: "0x01824a90d32A69022DdAEcC6C5C14Ed08dB4EB9B",
     },
   },
 };
