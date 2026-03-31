@@ -6,6 +6,7 @@ import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
 import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
 import { CallType } from "../../../clients/ts/src/bridge";
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
+import type { Logger } from "../../../utils/logger";
 import {
   BridgeInvariantViolationError,
   BridgeUnsupportedActionError,
@@ -128,6 +129,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
     solanaDeployment: { bridgeProgram: SolAddress; relayerProgram: SolAddress };
     evmDeployment: { bridgeContract: Hex };
     tokenMapping?: Record<string, string>;
+    logger?: Logger;
   }) {
     this.route = args.route;
     this.solana = args.solana;
@@ -151,6 +153,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
         chain: this.evm.viemChain,
         privateKey: this.evm.privateKey,
       },
+      logger: args.logger,
     });
   }
 

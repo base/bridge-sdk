@@ -1,5 +1,6 @@
 import type { EvmChainAdapter } from "../../adapters/chains/evm/types";
 import type { SolanaChainAdapter } from "../../adapters/chains/solana/types";
+import type { Logger } from "../../utils/logger";
 import { BridgeUnsupportedRouteError } from "../errors";
 import type {
   BridgeConfig,
@@ -73,6 +74,7 @@ export async function resolveBridgeRoute(
   route: BridgeRoute,
   chains: Record<ChainId, ChainAdapter>,
   config: BridgeConfig,
+  logger?: Logger,
 ): Promise<RouteAdapter> {
   const source = chains[route.sourceChain];
   const dest = chains[route.destinationChain];
@@ -95,6 +97,7 @@ export async function resolveBridgeRoute(
       solanaDeployment: solDep,
       evmDeployment: evmDep,
       tokenMapping: config.tokenMappings?.[routeMapKey(route)],
+      logger,
     });
   }
 
@@ -115,6 +118,7 @@ export async function resolveBridgeRoute(
       solanaDeployment: solDep,
       evmDeployment: evmDep,
       tokenMapping: config.tokenMappings?.[routeMapKey(route)],
+      logger,
     });
   }
 

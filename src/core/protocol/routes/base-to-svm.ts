@@ -10,6 +10,7 @@ import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
 import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
 import type { Ix } from "../../../clients/ts/src/bridge";
 import { fetchMaybeIncomingMessage } from "../../../clients/ts/src/bridge";
+import type { Logger } from "../../../utils/logger";
 import {
   BridgeInvariantViolationError,
   BridgeProofNotAvailableError,
@@ -103,6 +104,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     solanaDeployment: { bridgeProgram: SolAddress; relayerProgram: SolAddress };
     evmDeployment: { bridgeContract: Hex };
     tokenMapping?: Record<string, string>;
+    logger?: Logger;
   }) {
     this.route = args.route;
     this.solana = args.solana;
@@ -126,6 +128,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
         chain: this.evm.viemChain,
         privateKey: this.evm.privateKey,
       },
+      logger: args.logger,
     });
     this.solanaRpc = createSolanaRpc(this.solana.rpcUrl);
   }

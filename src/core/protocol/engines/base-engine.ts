@@ -19,6 +19,7 @@ import {
 } from "../../../clients/ts/src/bridge";
 import { BRIDGE_ABI } from "../../../interfaces/abis/bridge.abi";
 import { BRIDGE_VALIDATOR_ABI } from "../../../interfaces/abis/bridge-validator.abi";
+import { type Logger, NOOP_LOGGER } from "../../../utils/logger";
 import { sleep } from "../../../utils/time";
 import {
   BridgeExecutionRevertedError,
@@ -46,6 +47,7 @@ interface BaseEngineConfig {
 
 interface BaseEngineOpts {
   config: BaseEngineConfig;
+  logger?: Logger;
 }
 
 interface BaseBridgeCallOpts {
@@ -67,10 +69,12 @@ export class BaseEngine {
   private readonly publicClient: PublicClient;
   private readonly walletClient: WalletClient | undefined;
   private readonly account: ReturnType<typeof privateKeyToAccount> | undefined;
+  private readonly logger: Logger;
   private validatorAddressPromise: Promise<Hex> | undefined;
 
   constructor(opts: BaseEngineOpts) {
     this.config = opts.config;
+    this.logger = opts.logger ?? NOOP_LOGGER;
     this.publicClient = createPublicClient({
       chain: this.config.chain,
       transport: http(this.config.rpcUrl),
@@ -110,18 +114,26 @@ export class BaseEngine {
   }
 
   async estimateGasForCall(call: EvmCall): Promise<bigint> {
-    return await this.publicClient.estimateGas({
+    this.logger.debug(
+      `baseEngine.estimateGas: to=${call.to}, value=${call.value ?? 0n}`,
+    );
+    const gas = await this.publicClient.estimateGas({
       account: this.config.bridgeContract,
       to: call.to,
       data: call.data,
       value: call.value,
     });
+    this.logger.debug(`baseEngine.estimateGas: result=${gas}`);
+    return gas;
   }
 
   async bridgeCall(opts: BaseBridgeCallOpts): Promise<Hash> {
     const { walletClient, account } = this.requireWallet();
     const formattedIxs = this.formatIxs(opts.ixs);
 
+    this.logger.debug(
+      `baseEngine.bridgeCall: simulating with ${opts.ixs.length} instruction(s)`,
+    );
     const { request } = await this.publicClient.simulateContract({
       address: this.config.bridgeContract,
       abi: BRIDGE_ABI,
@@ -130,8 +142,12 @@ export class BaseEngine {
       account,
       chain: this.config.chain,
     });
+    this.logger.debug("baseEngine.bridgeCall: simulation succeeded");
 
-    return await walletClient.writeContract(request);
+    this.logger.info("baseEngine.bridgeCall: submitting transaction");
+    const txHash = await walletClient.writeContract(request);
+    this.logger.info(`baseEngine.bridgeCall: submitted txHash=${txHash}`);
+    return txHash;
   }
 
   async bridgeToken(opts: BaseBridgeTokenOpts): Promise<Hash> {
@@ -145,6 +161,9 @@ export class BaseEngine {
       remoteAmount: opts.transfer.amount,
     };
 
+    this.logger.debug(
+      `baseEngine.bridgeToken: simulating localToken=${opts.transfer.localToken}, amount=${opts.transfer.amount}, ixs=${opts.ixs.length}`,
+    );
     const { request } = await this.publicClient.simulateContract({
       address: this.config.bridgeContract,
       abi: BRIDGE_ABI,
@@ -153,8 +172,12 @@ export class BaseEngine {
       account,
       chain: this.config.chain,
     });
+    this.logger.debug("baseEngine.bridgeToken: simulation succeeded");
 
-    return await walletClient.writeContract(request);
+    this.logger.info("baseEngine.bridgeToken: submitting transaction");
+    const txHash = await walletClient.writeContract(request);
+    this.logger.info(`baseEngine.bridgeToken: submitted txHash=${txHash}`);
+    return txHash;
   }
 
   async generateProof(
@@ -162,20 +185,33 @@ export class BaseEngine {
     blockNumber: bigint,
     context: BridgeContext,
   ) {
+    this.logger.debug(
+      `baseEngine.generateProof: fetching receipt for txHash=${transactionHash}`,
+    );
     const txReceipt = await this.publicClient.getTransactionReceipt({
       hash: transactionHash,
     });
 
     if (txReceipt.status !== "success") {
+      this.logger.error(
+        `baseEngine.generateProof: transaction reverted, txHash=${transactionHash}, status=${txReceipt.status}`,
+      );
       throw new BridgeExecutionRevertedError(
         `Transaction reverted: ${transactionHash}`,
         { stage: "prove", ...context },
       );
     }
 
+    this.logger.debug(
+      `baseEngine.generateProof: receipt confirmed, blockNumber=${txReceipt.blockNumber}, gasUsed=${txReceipt.gasUsed}`,
+    );
+
     // Validate that bridge state is not behind the transaction
     for (const log of txReceipt.logs) {
       if (blockNumber < log.blockNumber) {
+        this.logger.error(
+          `baseEngine.generateProof: bridge state stale, bridgeBlock=${blockNumber}, txBlock=${log.blockNumber}`,
+        );
         throw new BridgeProofNotAvailableError(
           `Solana bridge state is stale (behind transaction block). Bridge state block: ${blockNumber}, Transaction block: ${log.blockNumber}`,
           context,
@@ -187,6 +223,9 @@ export class BaseEngine {
     const msgInitEvents = decodeMessageInitiatedEvents(txReceipt.logs);
 
     if (msgInitEvents.length !== 1) {
+      this.logger.error(
+        `baseEngine.generateProof: unexpected event count=${msgInitEvents.length}, txHash=${transactionHash}`,
+      );
       throw new BridgeInvariantViolationError(
         msgInitEvents.length === 0
           ? "No MessageInitiated event found in transaction"
@@ -196,6 +235,9 @@ export class BaseEngine {
     }
 
     const event = msgInitEvents[0]!;
+    this.logger.info(
+      `baseEngine.generateProof: decoded MessageInitiated event, nonce=${event.message.nonce}`,
+    );
 
     const rawProof = await this.publicClient.readContract({
       address: this.config.bridgeContract,
@@ -205,6 +247,9 @@ export class BaseEngine {
       blockNumber,
     });
 
+    this.logger.info(
+      `baseEngine.generateProof: proof generated for nonce=${event.message.nonce}, blockNumber=${blockNumber}`,
+    );
     return { event, rawProof };
   }
 
@@ -226,6 +271,10 @@ export class BaseEngine {
       gasLimit: options.gasLimit ?? DEFAULT_EVM_GAS_LIMIT,
     });
 
+    this.logger.debug(
+      `baseEngine.monitorExecution: polling outerHash=${outerHash}, timeout=${timeoutMs}ms`,
+    );
+
     const contracts = [
       {
         address: this.config.bridgeContract,
@@ -241,26 +290,47 @@ export class BaseEngine {
       },
     ] as const;
 
+    let pollCount = 0;
+    let halfwayWarned = false;
+
     while (Date.now() - startTime <= timeoutMs) {
+      pollCount++;
       const [isSuccessful, isFailed] = await this.publicClient.multicall({
         contracts,
         allowFailure: false,
       });
 
       if (isSuccessful) {
+        this.logger.info(
+          `baseEngine.monitorExecution: message succeeded, outerHash=${outerHash}, elapsed=${Date.now() - startTime}ms, polls=${pollCount}`,
+        );
         return;
       }
 
       if (isFailed) {
+        this.logger.warn(
+          `baseEngine.monitorExecution: message failed on Base, outerHash=${outerHash}`,
+        );
         throw new BridgeMessageFailedError(
           `Message execution failed on Base. Hash: ${outerHash}`,
           context,
         );
       }
 
+      const elapsed = Date.now() - startTime;
+      if (elapsed > timeoutMs / 2 && !halfwayWarned) {
+        halfwayWarned = true;
+        this.logger.warn(
+          `baseEngine.monitorExecution: still pending after ${elapsed}ms (${pollCount} polls), outerHash=${outerHash}`,
+        );
+      }
+
       await sleep(pollIntervalMs);
     }
 
+    this.logger.warn(
+      `baseEngine.monitorExecution: timed out after ${timeoutMs}ms (${pollCount} polls), outerHash=${outerHash}`,
+    );
     throw new BridgeTimeoutError(
       `Monitor message execution timed out after ${timeoutMs}ms`,
       { stage: "monitor", ...context },
@@ -281,6 +351,10 @@ export class BaseEngine {
     const { outerHash, evmMessage } = buildEvmIncomingMessage(
       outgoingMessageAccount,
       { gasLimit: options.gasLimit ?? DEFAULT_EVM_GAS_LIMIT },
+    );
+
+    this.logger.debug(
+      `baseEngine.executeMessage: checking state for outerHash=${outerHash}`,
     );
 
     // Batch all on-chain reads into a single multicall for performance
@@ -311,11 +385,17 @@ export class BaseEngine {
 
     // Check if message was already executed
     if (successesResult) {
+      this.logger.info(
+        `baseEngine.executeMessage: already succeeded, outerHash=${outerHash}`,
+      );
       return outerHash;
     }
 
     // Check if message previously failed
     if (failuresResult) {
+      this.logger.warn(
+        `baseEngine.executeMessage: previously failed, outerHash=${outerHash}`,
+      );
       throw new BridgeMessageFailedError(
         `Message previously failed execution on Base. Hash: ${outerHash}`,
         context,
@@ -324,11 +404,18 @@ export class BaseEngine {
 
     // Assert Bridge.getMessageHash(message) equals expected hash
     if (messageHashResult.toLowerCase() !== outerHash.toLowerCase()) {
+      this.logger.error(
+        `baseEngine.executeMessage: hash mismatch, got=${messageHashResult}, expected=${outerHash}`,
+      );
       throw new BridgeInvariantViolationError(
         `Hash mismatch: getMessageHash != expected. got=${messageHashResult}, expected=${outerHash}`,
         { stage: "execute", ...context },
       );
     }
+
+    this.logger.debug(
+      `baseEngine.executeMessage: hash verified, waiting for validator approval`,
+    );
 
     // Wait for validator approval of this exact message hash
     await this.waitForApproval(
@@ -339,6 +426,9 @@ export class BaseEngine {
     );
 
     // Execute the message on Base
+    this.logger.info(
+      `baseEngine.executeMessage: submitting relayMessages, outerHash=${outerHash}`,
+    );
     const tx = await walletClient.writeContract({
       address: this.config.bridgeContract,
       abi: BRIDGE_ABI,
@@ -348,6 +438,9 @@ export class BaseEngine {
       chain: this.config.chain,
     });
 
+    this.logger.info(
+      `baseEngine.executeMessage: relayed successfully, txHash=${tx}`,
+    );
     return tx;
   }
 
@@ -359,11 +452,18 @@ export class BaseEngine {
   ) {
     const validatorAddress = await this.getValidatorAddress();
 
+    this.logger.debug(
+      `baseEngine.waitForApproval: polling validator=${validatorAddress}, messageHash=${messageHash}, timeout=${timeoutMs}ms`,
+    );
+
     const start = Date.now();
     let currentInterval = intervalMs;
     const maxInterval = 30_000;
+    let pollCount = 0;
+    let halfwayWarned = false;
 
     while (Date.now() - start <= timeoutMs) {
+      pollCount++;
       const approved = await this.publicClient.readContract({
         address: validatorAddress,
         abi: BRIDGE_VALIDATOR_ABI,
@@ -372,7 +472,18 @@ export class BaseEngine {
       });
 
       if (approved) {
+        this.logger.info(
+          `baseEngine.waitForApproval: approved, messageHash=${messageHash}, elapsed=${Date.now() - start}ms, polls=${pollCount}`,
+        );
         return;
+      }
+
+      const elapsed = Date.now() - start;
+      if (elapsed > timeoutMs / 2 && !halfwayWarned) {
+        halfwayWarned = true;
+        this.logger.warn(
+          `baseEngine.waitForApproval: still waiting after ${elapsed}ms (${pollCount} polls, interval=${currentInterval}ms), messageHash=${messageHash}`,
+        );
       }
 
       await sleep(currentInterval);
@@ -382,6 +493,9 @@ export class BaseEngine {
       );
     }
 
+    this.logger.warn(
+      `baseEngine.waitForApproval: timed out after ${timeoutMs}ms (${pollCount} polls), messageHash=${messageHash}`,
+    );
     throw new BridgeTimeoutError(
       `Timed out waiting for BridgeValidator approval after ${timeoutMs}ms`,
       { stage: "execute", ...context },
