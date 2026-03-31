@@ -77,6 +77,15 @@ const MIN_COMPUTE_FEE_LAMPORTS = 5_000n;
 /** Base execute fee when no custom instructions */
 const BASE_EXECUTE_FEE_LAMPORTS = 10_000n;
 
+/** Max instruction data bytes before falling back to the buffered prove path. */
+const PROVE_BUFFER_THRESHOLD = 900;
+/** Max data bytes per appendToProveBufferData transaction. */
+const PROVE_DATA_CHUNK_SIZE = 900;
+/** Max proof nodes per appendToProveBufferProof transaction. */
+const PROVE_PROOF_CHUNK_SIZE = 25;
+/** Fixed-overhead bytes in the proveMessage instruction (discriminator + nonce + sender + length prefixes + messageHash). */
+const PROVE_FIXED_OVERHEAD = 76;
+
 /**
  * Base -> SVM route adapter (Base is always the EVM side).
  */
@@ -520,6 +529,24 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
         }),
       proveOnSource,
     );
+
+    const estimatedDataLen = (event.message.data.length - 2) / 2;
+    const proofPayloadSize =
+      PROVE_FIXED_OVERHEAD + estimatedDataLen + rawProof.length * 32;
+
+    if (proofPayloadSize > PROVE_BUFFER_THRESHOLD) {
+      const dataBytes = toBytes(event.message.data);
+      const proofNodes = rawProof.map((e) => toBytes(e));
+      return this.proveWithBuffer(
+        ref,
+        event,
+        dataBytes,
+        proofNodes,
+        blockNumber,
+        proveOnDest,
+      );
+    }
+
     const res = await wrapEngineError(
       () => this.solanaEngine.handleProveMessage(event, rawProof, blockNumber),
       proveOnDest,
@@ -530,6 +557,111 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     }
 
     return { messageRef: ref, proofTx: res.signature };
+  }
+
+  private async proveWithBuffer(
+    ref: MessageRef,
+    event: {
+      messageHash: `0x${string}`;
+      message: {
+        nonce: bigint;
+        sender: `0x${string}`;
+      };
+    },
+    dataBytes: Uint8Array,
+    proofNodes: Uint8Array[],
+    blockNumber: bigint,
+    proveOnDest: BridgeContext & { stage: "prove" },
+  ): Promise<ProveResult> {
+    const alreadyProven = await wrapEngineError(
+      () => this.solanaEngine.isMessageAlreadyProven(event.messageHash),
+      proveOnDest,
+    );
+    if (alreadyProven) {
+      return { messageRef: ref };
+    }
+
+    const { bufferAddress } = await wrapEngineError(
+      () =>
+        this.solanaEngine.initializeProveBuffer({
+          maxDataLen: BigInt(dataBytes.length),
+          maxProofLen: BigInt(proofNodes.length),
+        }),
+      proveOnDest,
+    );
+
+    try {
+      // Data and proof target independent buffer segments, so append concurrently.
+      await Promise.all([
+        this.appendDataChunks(bufferAddress, dataBytes, proveOnDest),
+        this.appendProofChunks(bufferAddress, proofNodes, proveOnDest),
+      ]);
+
+      const res = await wrapEngineError(
+        () =>
+          this.solanaEngine.proveMessageBuffered({
+            bufferAddress,
+            event,
+            blockNumber,
+          }),
+        proveOnDest,
+      );
+
+      if (!res.signature) {
+        // Already proven — buffer is still alive, close to recover rent.
+        try {
+          await this.solanaEngine.closeProveBuffer({ bufferAddress });
+        } catch {}
+        return { messageRef: ref };
+      }
+
+      return { messageRef: ref, proofTx: res.signature };
+    } catch (e) {
+      try {
+        await this.solanaEngine.closeProveBuffer({ bufferAddress });
+      } catch {}
+      throw e;
+    }
+  }
+
+  private async appendDataChunks(
+    bufferAddress: SolAddress,
+    dataBytes: Uint8Array,
+    ctx: BridgeContext & { stage: "prove" },
+  ): Promise<void> {
+    for (
+      let offset = 0;
+      offset < dataBytes.length;
+      offset += PROVE_DATA_CHUNK_SIZE
+    ) {
+      const chunk = dataBytes.subarray(offset, offset + PROVE_DATA_CHUNK_SIZE);
+      await wrapEngineError(
+        () =>
+          this.solanaEngine.appendToProveBufferData({
+            bufferAddress,
+            chunk,
+          }),
+        ctx,
+      );
+    }
+  }
+
+  private async appendProofChunks(
+    bufferAddress: SolAddress,
+    proofNodes: Uint8Array[],
+    ctx: BridgeContext & { stage: "prove" },
+  ): Promise<void> {
+    for (let i = 0; i < proofNodes.length; i += PROVE_PROOF_CHUNK_SIZE) {
+      const proofChunk = proofNodes.slice(i, i + PROVE_PROOF_CHUNK_SIZE);
+      await wrapEngineError(
+        () =>
+          this.solanaEngine.appendToProveBufferProof({
+            bufferAddress,
+            proofChunk,
+          }),
+        ctx,
+      );
+    }
   }
 
   async execute(

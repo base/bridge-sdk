@@ -54,6 +54,8 @@ import {
   fetchMaybeOutgoingMessage,
   fetchOutgoingMessage,
   getAppendToCallBufferInstruction,
+  getAppendToProveBufferDataInstruction,
+  getAppendToProveBufferProofInstruction,
   getBridgeCallBufferedInstruction,
   getBridgeCallInstruction,
   getBridgeSolInstruction,
@@ -63,7 +65,10 @@ import {
   getBridgeWrappedTokenInstruction,
   getBridgeWrappedTokenWithBufferedCallInstruction,
   getCloseCallBufferInstruction,
+  getCloseProveBufferInstruction,
   getInitializeCallBufferInstruction,
+  getInitializeProveBufferInstruction,
+  getProveMessageBufferedInstruction,
   getProveMessageInstruction,
   getRelayMessageInstruction,
   getWrapTokenInstruction,
@@ -177,6 +182,33 @@ interface BufferedBridgeWrappedOpts extends BufferedBridgeCallOpts {
   to: Address;
   mint: string;
   amount: bigint;
+}
+
+interface InitializeProveBufferOpts {
+  maxDataLen: bigint;
+  maxProofLen: bigint;
+}
+
+interface AppendToProveBufferDataOpts {
+  bufferAddress: SolAddress;
+  chunk: Uint8Array;
+}
+
+interface AppendToProveBufferProofOpts {
+  bufferAddress: SolAddress;
+  proofChunk: Uint8Array[];
+}
+
+interface ProveMessageBufferedOpts {
+  bufferAddress: SolAddress;
+  event: {
+    messageHash: `0x${string}`;
+    message: {
+      nonce: bigint;
+      sender: `0x${string}`;
+    };
+  };
+  blockNumber: bigint;
 }
 
 interface SolanaEngineOpts {
@@ -609,10 +641,21 @@ export class SolanaEngine {
     return bridge.data.baseBlockNumber;
   }
 
+  async isMessageAlreadyProven(messageHash: `0x${string}`): Promise<boolean> {
+    const messageAddress = await deriveIncomingMessagePda(
+      this.config.bridgeProgram,
+      messageHash,
+    );
+    const maybeMessage = await fetchMaybeIncomingMessage(
+      this.rpc,
+      messageAddress,
+    );
+    return maybeMessage.exists;
+  }
+
   async handleProveMessage(
     event: {
       messageHash: `0x${string}`;
-      mmrRoot: `0x${string}`;
       message: {
         nonce: bigint;
         sender: `0x${string}`;
@@ -624,18 +667,8 @@ export class SolanaEngine {
   ): Promise<{ signature?: Signature; messageHash: Hash }> {
     const payer = this.config.payer;
 
-    const [bridgeAddress, [outputRootAddress], messageAddress] =
-      await Promise.all([
-        this.getBridgePda(),
-        getProgramDerivedAddress({
-          programAddress: this.config.bridgeProgram,
-          seeds: [
-            Buffer.from(getIdlConstant("OUTPUT_ROOT_SEED")),
-            getU64Encoder({ endian: Endian.Little }).encode(blockNumber),
-          ],
-        }),
-        deriveIncomingMessagePda(this.config.bridgeProgram, event.messageHash),
-      ]);
+    const { bridgeAddress, outputRootAddress, messageAddress } =
+      await this.resolveProveAccounts(blockNumber, event.messageHash);
 
     const maybeMessage = await fetchMaybeIncomingMessage(
       this.rpc,
@@ -1100,6 +1133,151 @@ export class SolanaEngine {
       },
       opts.idempotencyKey,
     );
+  }
+
+  async initializeProveBuffer(
+    opts: InitializeProveBufferOpts,
+  ): Promise<InitCallBufferResult> {
+    const [proveBufferKeypair, bridgeAddress] = await Promise.all([
+      generateKeyPairSigner(),
+      this.getBridgePda(),
+    ]);
+
+    const ix = getInitializeProveBufferInstruction(
+      {
+        payer: this.config.payer,
+        bridge: bridgeAddress,
+        proveBuffer: proveBufferKeypair,
+        systemProgram: SYSTEM_PROGRAM_ADDRESS,
+        maxDataLen: opts.maxDataLen,
+        maxProofLen: opts.maxProofLen,
+      },
+      { programAddress: this.config.bridgeProgram },
+    );
+
+    const signature = await this.buildAndSendTransaction(
+      [ix],
+      this.config.payer,
+      [proveBufferKeypair],
+    );
+
+    return { bufferAddress: proveBufferKeypair.address, signature };
+  }
+
+  async appendToProveBufferData(
+    opts: AppendToProveBufferDataOpts,
+  ): Promise<{ signature: Signature }> {
+    const ix = getAppendToProveBufferDataInstruction(
+      {
+        owner: this.config.payer,
+        proveBuffer: opts.bufferAddress,
+        chunk: opts.chunk,
+      },
+      { programAddress: this.config.bridgeProgram },
+    );
+
+    const signature = await this.buildAndSendTransaction(
+      [ix],
+      this.config.payer,
+    );
+    return { signature };
+  }
+
+  async appendToProveBufferProof(
+    opts: AppendToProveBufferProofOpts,
+  ): Promise<{ signature: Signature }> {
+    const ix = getAppendToProveBufferProofInstruction(
+      {
+        owner: this.config.payer,
+        proveBuffer: opts.bufferAddress,
+        proofChunk: opts.proofChunk,
+      },
+      { programAddress: this.config.bridgeProgram },
+    );
+
+    const signature = await this.buildAndSendTransaction(
+      [ix],
+      this.config.payer,
+    );
+    return { signature };
+  }
+
+  async proveMessageBuffered(
+    opts: ProveMessageBufferedOpts,
+  ): Promise<{ signature?: Signature; messageHash: Hash }> {
+    const payer = this.config.payer;
+
+    const { bridgeAddress, outputRootAddress, messageAddress } =
+      await this.resolveProveAccounts(opts.blockNumber, opts.event.messageHash);
+
+    const maybeMessage = await fetchMaybeIncomingMessage(
+      this.rpc,
+      messageAddress,
+    );
+    if (maybeMessage.exists) {
+      return { messageHash: opts.event.messageHash };
+    }
+
+    const ix = getProveMessageBufferedInstruction(
+      {
+        payer,
+        outputRoot: outputRootAddress,
+        message: messageAddress,
+        bridge: bridgeAddress,
+        owner: payer,
+        proveBuffer: opts.bufferAddress,
+        systemProgram: SYSTEM_PROGRAM_ADDRESS,
+
+        nonce: opts.event.message.nonce,
+        sender: toBytes(opts.event.message.sender),
+        messageHash: toBytes(opts.event.messageHash),
+      },
+      { programAddress: this.config.bridgeProgram },
+    );
+
+    const signature = await this.buildAndSendTransaction([ix], payer);
+    return { signature, messageHash: opts.event.messageHash };
+  }
+
+  async closeProveBuffer(
+    opts: CloseCallBufferOpts,
+  ): Promise<{ signature: Signature }> {
+    const ix = getCloseProveBufferInstruction(
+      {
+        owner: this.config.payer,
+        proveBuffer: opts.bufferAddress,
+      },
+      { programAddress: this.config.bridgeProgram },
+    );
+
+    const signature = await this.buildAndSendTransaction(
+      [ix],
+      this.config.payer,
+    );
+    return { signature };
+  }
+
+  private async resolveProveAccounts(
+    blockNumber: bigint,
+    messageHash: `0x${string}`,
+  ): Promise<{
+    bridgeAddress: SolAddress;
+    outputRootAddress: SolAddress;
+    messageAddress: SolAddress;
+  }> {
+    const [bridgeAddress, [outputRootAddress], messageAddress] =
+      await Promise.all([
+        this.getBridgePda(),
+        getProgramDerivedAddress({
+          programAddress: this.config.bridgeProgram,
+          seeds: [
+            Buffer.from(getIdlConstant("OUTPUT_ROOT_SEED")),
+            getU64Encoder({ endian: Endian.Little }).encode(blockNumber),
+          ],
+        }),
+        deriveIncomingMessagePda(this.config.bridgeProgram, messageHash),
+      ]);
+    return { bridgeAddress, outputRootAddress, messageAddress };
   }
 
   private formatCall(call: EvmCall): FormattedCall;
