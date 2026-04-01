@@ -145,6 +145,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
         bridgeProgram: this.solanaDeployment.bridgeProgram,
         relayerProgram: this.solanaDeployment.relayerProgram,
       },
+      logger: args.logger,
     });
     this.baseEngine = new BaseEngine({
       config: {

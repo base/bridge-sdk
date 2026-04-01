@@ -77,6 +77,8 @@ import {
   type WrapTokenInstructionDataArgs,
 } from "../../../clients/ts/src/bridge";
 import { getIdlConstant } from "../../../utils/bridge-idl.constants";
+import type { Logger } from "../../../utils/logger";
+import { NOOP_LOGGER } from "../../../utils/logger";
 import { getRelayerIdlConstant } from "../../../utils/relayer-idl.constants";
 import { sleep } from "../../../utils/time";
 import {
@@ -213,6 +215,7 @@ interface ProveMessageBufferedOpts {
 
 interface SolanaEngineOpts {
   config: SolanaEngineConfig;
+  logger?: Logger;
 }
 
 interface BridgeOpOpts {
@@ -262,6 +265,7 @@ interface WrapTokenOpts {
 export class SolanaEngine {
   private readonly config: SolanaEngineConfig;
   private readonly rpc: Rpc;
+  private readonly logger: Logger;
   private readonly sendAndConfirmTx: ReturnType<
     typeof sendAndConfirmTransactionFactory
   >;
@@ -269,6 +273,7 @@ export class SolanaEngine {
 
   constructor(opts: SolanaEngineOpts) {
     this.config = opts.config;
+    this.logger = opts.logger ?? NOOP_LOGGER;
     this.rpc = createSolanaRpc(this.config.rpcUrl);
 
     const url = new URL(this.config.rpcUrl);
@@ -308,14 +313,24 @@ export class SolanaEngine {
       options.pollIntervalMs ?? DEFAULT_MONITOR_POLL_INTERVAL_MS;
     const startTime = Date.now();
 
+    this.logger.debug(
+      `solanaEngine.getOutgoingMessage: polling pubkey=${pubkey}, timeout=${timeoutMs}ms`,
+    );
+
     while (Date.now() - startTime <= timeoutMs) {
       const maybeAccount = await fetchMaybeOutgoingMessage(this.rpc, pubkey);
       if (maybeAccount.exists) {
+        this.logger.debug(
+          `solanaEngine.getOutgoingMessage: found, pubkey=${pubkey}, elapsed=${Date.now() - startTime}ms`,
+        );
         return maybeAccount as Account<OutgoingMessage, string>;
       }
       await sleep(pollIntervalMs);
     }
 
+    this.logger.warn(
+      `solanaEngine.getOutgoingMessage: not found after ${timeoutMs}ms, fetching directly, pubkey=${pubkey}`,
+    );
     return await fetchOutgoingMessage(this.rpc, pubkey);
   }
 
@@ -336,6 +351,9 @@ export class SolanaEngine {
       gasCostScalerDp: bigint;
     };
   }> {
+    this.logger.debug(
+      "solanaEngine.getGasConfigs: fetching bridge and relayer configs",
+    );
     const bridgeAddress = await this.getBridgePda();
 
     const cfgAddress = await this.getCfgAddress();
@@ -344,6 +362,10 @@ export class SolanaEngine {
       fetchBridge(this.rpc, bridgeAddress),
       fetchCfg(this.rpc, cfgAddress),
     ]);
+
+    this.logger.debug(
+      `solanaEngine.getGasConfigs: gasPerCall=${bridge.data.gasConfig.gasPerCall}, relayerMinGas=${cfg.data.gasConfig.minGasLimitPerMessage}, relayerMaxGas=${cfg.data.gasConfig.maxGasLimitPerMessage}`,
+    );
 
     return {
       bridgeGasConfig: {
@@ -377,6 +399,10 @@ export class SolanaEngine {
     if (instructions.length === 0) {
       return 0n;
     }
+
+    this.logger.debug(
+      `solanaEngine.simulateInstructions: simulating ${instructions.length} instruction(s)`,
+    );
 
     // Get a recent blockhash for the transaction
     const { value: latestBlockhash } = await this.rpc
@@ -415,17 +441,29 @@ export class SolanaEngine {
       if (result.value.err) {
         // Simulation failed (e.g., instruction would revert)
         // Return undefined to indicate we couldn't get an accurate estimate
+        this.logger.warn(
+          `solanaEngine.simulateInstructions: simulation failed, err=${JSON.stringify(result.value.err)}`,
+        );
         return undefined;
       }
 
+      this.logger.debug(
+        `solanaEngine.simulateInstructions: success, unitsConsumed=${result.value.unitsConsumed}`,
+      );
       return result.value.unitsConsumed;
-    } catch {
+    } catch (err) {
       // RPC error or other failure
+      this.logger.warn(
+        `solanaEngine.simulateInstructions: RPC error, ${err instanceof Error ? err.message : String(err)}`,
+      );
       return undefined;
     }
   }
 
   async bridgeSol(opts: BridgeSolOpts): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.bridgeSol: to=${opts.to}, amount=${opts.amount}, payForRelay=${!!opts.payForRelay}, hasCall=${!!opts.call}`,
+    );
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -453,10 +491,14 @@ export class SolanaEngine {
         ];
       },
       opts.idempotencyKey,
+      "bridgeSol",
     );
   }
 
   async bridgeSpl(opts: BridgeSplOpts): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.bridgeSpl: to=${opts.to}, mint=${opts.mint}, remoteToken=${opts.remoteToken}, amount=${opts.amount}, payForRelay=${!!opts.payForRelay}`,
+    );
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -501,10 +543,14 @@ export class SolanaEngine {
         ];
       },
       opts.idempotencyKey,
+      "bridgeSpl",
     );
   }
 
   async bridgeWrapped(opts: BridgeWrappedOpts): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.bridgeWrapped: to=${opts.to}, mint=${opts.mint}, amount=${opts.amount}, payForRelay=${!!opts.payForRelay}`,
+    );
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -535,10 +581,14 @@ export class SolanaEngine {
         ];
       },
       opts.idempotencyKey,
+      "bridgeWrapped",
     );
   }
 
   async bridgeCall(opts: BridgeCallOpts): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.bridgeCall: to=${opts.to}, value=${opts.value}, dataLen=${(opts.data.length - 2) / 2}, payForRelay=${!!opts.payForRelay}`,
+    );
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -561,10 +611,14 @@ export class SolanaEngine {
         ];
       },
       opts.idempotencyKey,
+      "bridgeCall",
     );
   }
 
   async wrapToken(opts: WrapTokenOpts): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.wrapToken: remoteToken=${opts.remoteToken}, symbol=${opts.symbol}, decimals=${opts.decimals}, scalerExponent=${opts.scalerExponent}`,
+    );
     return await this.executeBridgeOp(
       opts.payForRelay,
       undefined,
@@ -631,6 +685,7 @@ export class SolanaEngine {
         ];
       },
       opts.idempotencyKey,
+      "wrapToken",
     );
   }
 
@@ -638,6 +693,9 @@ export class SolanaEngine {
     const bridgeAddress = await this.getBridgePda();
 
     const bridge = await fetchBridge(this.rpc, bridgeAddress);
+    this.logger.debug(
+      `solanaEngine.getLatestBaseBlockNumber: blockNumber=${bridge.data.baseBlockNumber}`,
+    );
     return bridge.data.baseBlockNumber;
   }
 
@@ -649,6 +707,9 @@ export class SolanaEngine {
     const maybeMessage = await fetchMaybeIncomingMessage(
       this.rpc,
       messageAddress,
+    );
+    this.logger.debug(
+      `solanaEngine.isMessageAlreadyProven: messageHash=${messageHash}, exists=${maybeMessage.exists}`,
     );
     return maybeMessage.exists;
   }
@@ -665,6 +726,9 @@ export class SolanaEngine {
     rawProof: readonly `0x${string}`[],
     blockNumber: bigint,
   ): Promise<{ signature?: Signature; messageHash: Hash }> {
+    this.logger.debug(
+      `solanaEngine.handleProveMessage: messageHash=${event.messageHash}, nonce=${event.message.nonce}, blockNumber=${blockNumber}, proofNodes=${rawProof.length}`,
+    );
     const payer = this.config.payer;
 
     const { bridgeAddress, outputRootAddress, messageAddress } =
@@ -675,9 +739,15 @@ export class SolanaEngine {
       messageAddress,
     );
     if (maybeMessage.exists) {
+      this.logger.info(
+        `solanaEngine.handleProveMessage: already proven, messageHash=${event.messageHash}`,
+      );
       return { messageHash: event.messageHash };
     }
 
+    this.logger.debug(
+      `solanaEngine.handleProveMessage: submitting prove transaction, messageHash=${event.messageHash}`,
+    );
     const ix = getProveMessageInstruction(
       {
         payer,
@@ -696,10 +766,16 @@ export class SolanaEngine {
     );
 
     const signature = await this.buildAndSendTransaction([ix], payer);
+    this.logger.info(
+      `solanaEngine.handleProveMessage: proved successfully, messageHash=${event.messageHash}, signature=${signature}`,
+    );
     return { signature, messageHash: event.messageHash };
   }
 
   async handleExecuteMessage(messageHash: Hex): Promise<Signature> {
+    this.logger.debug(
+      `solanaEngine.handleExecuteMessage: messageHash=${messageHash}`,
+    );
     const payer = this.config.payer;
 
     const messagePda = await deriveIncomingMessagePda(
@@ -712,17 +788,27 @@ export class SolanaEngine {
       messagePda,
     );
     if (!maybeIncomingMessage.exists) {
+      this.logger.debug(
+        `solanaEngine.handleExecuteMessage: message not proven, messageHash=${messageHash}, pda=${messagePda}`,
+      );
       throw new BridgeNotProvenError(
         `Message not found at ${messagePda}. Ensure it has been proven on Solana first.`,
         {},
       );
     }
     if (maybeIncomingMessage.data.executed) {
+      this.logger.info(
+        `solanaEngine.handleExecuteMessage: already executed, messageHash=${messageHash}`,
+      );
       throw new BridgeAlreadyExecutedError(
         "Message has already been executed",
         {},
       );
     }
+
+    this.logger.debug(
+      `solanaEngine.handleExecuteMessage: resolving accounts, messageKind=${maybeIncomingMessage.data.message.__kind}`,
+    );
 
     const [bridgeCpiAuthorityPda] = await getProgramDerivedAddress({
       programAddress: this.config.bridgeProgram,
@@ -765,9 +851,15 @@ export class SolanaEngine {
       data: relayMessageIx.data,
     };
 
+    this.logger.debug(
+      `solanaEngine.handleExecuteMessage: submitting relay transaction, messageHash=${messageHash}, remainingAccounts=${remainingAccounts.length}`,
+    );
     const signature = await this.buildAndSendTransaction(
       [relayMessageIxWithRemainingAccounts],
       payer,
+    );
+    this.logger.info(
+      `solanaEngine.handleExecuteMessage: executed successfully, messageHash=${messageHash}, signature=${signature}`,
     );
     return signature;
   }
@@ -775,6 +867,9 @@ export class SolanaEngine {
   private messageCallAccounts(message: MessageCall) {
     const ixs = message.fields[0];
     if (ixs.length === 0) {
+      this.logger.error(
+        `solanaEngine.messageCallAccounts: zero instructions in call message`,
+      );
       throw new BridgeInvariantViolationError(
         "Zero instructions in call message",
         { stage: "execute" },
@@ -837,6 +932,9 @@ export class SolanaEngine {
     const mint = await this.rpc.getAccountInfo(localToken).send();
     const mintInfo = mint.value;
     if (!mintInfo) {
+      this.logger.error(
+        `solanaEngine.messageTransferSplAccounts: mint not found, token=${localToken}`,
+      );
       throw new BridgeInvariantViolationError(
         `Mint not found for token address: ${localToken}`,
         { stage: "execute" },
@@ -898,6 +996,9 @@ export class SolanaEngine {
   async initializeCallBuffer(
     opts: InitializeCallBufferOpts,
   ): Promise<InitCallBufferResult> {
+    this.logger.debug(
+      `solanaEngine.initializeCallBuffer: callType=${opts.callType}, maxDataLen=${opts.maxDataLen}, initialDataLen=${opts.initialData.length}`,
+    );
     const callBufferKeypair = await generateKeyPairSigner();
     const bridgeAddress = await this.getBridgePda();
 
@@ -922,6 +1023,9 @@ export class SolanaEngine {
       [callBufferKeypair],
     );
 
+    this.logger.info(
+      `solanaEngine.initializeCallBuffer: initialized, bufferAddress=${callBufferKeypair.address}, signature=${signature}`,
+    );
     return { bufferAddress: callBufferKeypair.address, signature };
   }
 
@@ -932,6 +1036,9 @@ export class SolanaEngine {
   async appendToCallBuffer(
     opts: AppendToCallBufferOpts,
   ): Promise<{ signature: Signature }> {
+    this.logger.debug(
+      `solanaEngine.appendToCallBuffer: bufferAddress=${opts.bufferAddress}, chunkSize=${opts.data.length}`,
+    );
     const ix = getAppendToCallBufferInstruction(
       {
         owner: this.config.payer,
@@ -945,6 +1052,9 @@ export class SolanaEngine {
       [ix],
       this.config.payer,
     );
+    this.logger.debug(
+      `solanaEngine.appendToCallBuffer: appended, bufferAddress=${opts.bufferAddress}, signature=${signature}`,
+    );
     return { signature };
   }
 
@@ -955,6 +1065,9 @@ export class SolanaEngine {
   async closeCallBuffer(
     opts: CloseCallBufferOpts,
   ): Promise<{ signature: Signature }> {
+    this.logger.debug(
+      `solanaEngine.closeCallBuffer: bufferAddress=${opts.bufferAddress}`,
+    );
     const ix = getCloseCallBufferInstruction(
       {
         owner: this.config.payer,
@@ -966,6 +1079,9 @@ export class SolanaEngine {
     const signature = await this.buildAndSendTransaction(
       [ix],
       this.config.payer,
+    );
+    this.logger.debug(
+      `solanaEngine.closeCallBuffer: closed, bufferAddress=${opts.bufferAddress}, signature=${signature}`,
     );
     return { signature };
   }
@@ -981,6 +1097,9 @@ export class SolanaEngine {
   async bridgeCallBuffered(
     opts: BufferedBridgeCallOpts,
   ): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.bridgeCallBuffered: bufferAddress=${opts.bufferAddress}, payForRelay=${!!opts.payForRelay}`,
+    );
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -1001,6 +1120,7 @@ export class SolanaEngine {
         ),
       ],
       opts.idempotencyKey,
+      "bridgeCallBuffered",
     );
   }
 
@@ -1011,6 +1131,9 @@ export class SolanaEngine {
   async bridgeSolWithBufferedCall(
     opts: BufferedBridgeSolOpts,
   ): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.bridgeSolWithBufferedCall: to=${opts.to}, amount=${opts.amount}, bufferAddress=${opts.bufferAddress}`,
+    );
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -1037,6 +1160,7 @@ export class SolanaEngine {
         ];
       },
       opts.idempotencyKey,
+      "bridgeSolWithBufferedCall",
     );
   }
 
@@ -1047,6 +1171,9 @@ export class SolanaEngine {
   async bridgeSplWithBufferedCall(
     opts: BufferedBridgeSplOpts,
   ): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.bridgeSplWithBufferedCall: to=${opts.to}, mint=${opts.mint}, amount=${opts.amount}, bufferAddress=${opts.bufferAddress}`,
+    );
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -1091,6 +1218,7 @@ export class SolanaEngine {
         ];
       },
       opts.idempotencyKey,
+      "bridgeSplWithBufferedCall",
     );
   }
 
@@ -1102,6 +1230,9 @@ export class SolanaEngine {
   async bridgeWrappedTokenWithBufferedCall(
     opts: BufferedBridgeWrappedOpts,
   ): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.bridgeWrappedTokenWithBufferedCall: to=${opts.to}, mint=${opts.mint}, amount=${opts.amount}, bufferAddress=${opts.bufferAddress}`,
+    );
     return await this.executeBridgeOp(
       opts.payForRelay,
       opts.gasLimit,
@@ -1132,12 +1263,16 @@ export class SolanaEngine {
         ];
       },
       opts.idempotencyKey,
+      "bridgeWrappedTokenWithBufferedCall",
     );
   }
 
   async initializeProveBuffer(
     opts: InitializeProveBufferOpts,
   ): Promise<InitCallBufferResult> {
+    this.logger.debug(
+      `solanaEngine.initializeProveBuffer: maxDataLen=${opts.maxDataLen}, maxProofLen=${opts.maxProofLen}`,
+    );
     const [proveBufferKeypair, bridgeAddress] = await Promise.all([
       generateKeyPairSigner(),
       this.getBridgePda(),
@@ -1161,12 +1296,18 @@ export class SolanaEngine {
       [proveBufferKeypair],
     );
 
+    this.logger.info(
+      `solanaEngine.initializeProveBuffer: initialized, bufferAddress=${proveBufferKeypair.address}, signature=${signature}`,
+    );
     return { bufferAddress: proveBufferKeypair.address, signature };
   }
 
   async appendToProveBufferData(
     opts: AppendToProveBufferDataOpts,
   ): Promise<{ signature: Signature }> {
+    this.logger.debug(
+      `solanaEngine.appendToProveBufferData: bufferAddress=${opts.bufferAddress}, chunkSize=${opts.chunk.length}`,
+    );
     const ix = getAppendToProveBufferDataInstruction(
       {
         owner: this.config.payer,
@@ -1180,12 +1321,18 @@ export class SolanaEngine {
       [ix],
       this.config.payer,
     );
+    this.logger.debug(
+      `solanaEngine.appendToProveBufferData: appended, bufferAddress=${opts.bufferAddress}, signature=${signature}`,
+    );
     return { signature };
   }
 
   async appendToProveBufferProof(
     opts: AppendToProveBufferProofOpts,
   ): Promise<{ signature: Signature }> {
+    this.logger.debug(
+      `solanaEngine.appendToProveBufferProof: bufferAddress=${opts.bufferAddress}, proofNodes=${opts.proofChunk.length}`,
+    );
     const ix = getAppendToProveBufferProofInstruction(
       {
         owner: this.config.payer,
@@ -1199,12 +1346,18 @@ export class SolanaEngine {
       [ix],
       this.config.payer,
     );
+    this.logger.debug(
+      `solanaEngine.appendToProveBufferProof: appended, bufferAddress=${opts.bufferAddress}, signature=${signature}`,
+    );
     return { signature };
   }
 
   async proveMessageBuffered(
     opts: ProveMessageBufferedOpts,
   ): Promise<{ signature?: Signature; messageHash: Hash }> {
+    this.logger.debug(
+      `solanaEngine.proveMessageBuffered: messageHash=${opts.event.messageHash}, nonce=${opts.event.message.nonce}, blockNumber=${opts.blockNumber}, bufferAddress=${opts.bufferAddress}`,
+    );
     const payer = this.config.payer;
 
     const { bridgeAddress, outputRootAddress, messageAddress } =
@@ -1215,6 +1368,9 @@ export class SolanaEngine {
       messageAddress,
     );
     if (maybeMessage.exists) {
+      this.logger.info(
+        `solanaEngine.proveMessageBuffered: already proven, messageHash=${opts.event.messageHash}`,
+      );
       return { messageHash: opts.event.messageHash };
     }
 
@@ -1236,12 +1392,18 @@ export class SolanaEngine {
     );
 
     const signature = await this.buildAndSendTransaction([ix], payer);
+    this.logger.info(
+      `solanaEngine.proveMessageBuffered: proved successfully, messageHash=${opts.event.messageHash}, signature=${signature}`,
+    );
     return { signature, messageHash: opts.event.messageHash };
   }
 
   async closeProveBuffer(
     opts: CloseCallBufferOpts,
   ): Promise<{ signature: Signature }> {
+    this.logger.debug(
+      `solanaEngine.closeProveBuffer: bufferAddress=${opts.bufferAddress}`,
+    );
     const ix = getCloseProveBufferInstruction(
       {
         owner: this.config.payer,
@@ -1253,6 +1415,9 @@ export class SolanaEngine {
     const signature = await this.buildAndSendTransaction(
       [ix],
       this.config.payer,
+    );
+    this.logger.debug(
+      `solanaEngine.closeProveBuffer: closed, bufferAddress=${opts.bufferAddress}, signature=${signature}`,
     );
     return { signature };
   }
@@ -1307,17 +1472,28 @@ export class SolanaEngine {
       salt: Uint8Array;
     }) => Promise<Instruction[]>,
     idempotencyKey?: string,
+    opLabel?: string,
   ): Promise<BridgeOpResult> {
+    this.logger.debug(
+      `solanaEngine.executeBridgeOp: resolving message accounts, payForRelay=${!!payForRelay}`,
+    );
     const { payer, bridge, outgoingMessage, salt } =
       await this.setupMessage(idempotencyKey);
     const ixs = await builder({ payer, bridge, outgoingMessage, salt });
-    return await this.submitMessage(
+    this.logger.debug(
+      `solanaEngine.executeBridgeOp: built ${ixs.length} instruction(s), outgoingMessage=${outgoingMessage}`,
+    );
+    const result = await this.submitMessage(
       ixs,
       outgoingMessage,
       payer,
       !!payForRelay,
       gasLimit,
     );
+    this.logger.info(
+      `solanaEngine.${opLabel ?? "executeBridgeOp"}: success, signature=${result.signature}, outgoingPda=${result.outgoingPda}`,
+    );
+    return result;
   }
 
   private async setupMessage(idempotencyKey?: string) {
@@ -1339,6 +1515,9 @@ export class SolanaEngine {
     const mint = address(opts.mint);
     const maybeMint = await fetchMaybeMint(this.rpc, mint);
     if (!maybeMint.exists) {
+      this.logger.warn(
+        `solanaEngine.setupSpl: mint not found, token=${opts.mint}`,
+      );
       throw new BridgeValidationError(
         `Mint not found for token address: ${opts.mint}`,
         { stage: "initiate" },
@@ -1364,6 +1543,9 @@ export class SolanaEngine {
     gasLimit?: bigint,
   ): Promise<BridgeOpResult> {
     if (payForRelay) {
+      this.logger.debug(
+        `solanaEngine.submitMessage: adding relay payment, gasLimit=${gasLimit ?? DEFAULT_RELAY_GAS_LIMIT}`,
+      );
       ixs.push(
         await this.buildPayForRelayInstruction(
           outgoingMessage,
@@ -1373,6 +1555,9 @@ export class SolanaEngine {
       );
     }
 
+    this.logger.debug(
+      `solanaEngine.submitMessage: sending ${ixs.length} instruction(s)`,
+    );
     const signature = await this.buildAndSendTransaction(ixs, payer);
     return { outgoingPda: outgoingMessage, signature };
   }
@@ -1408,6 +1593,9 @@ export class SolanaEngine {
     payer: TransactionSigner,
     additionalSigners?: TransactionSigner[],
   ) {
+    this.logger.debug(
+      `solanaEngine.buildAndSendTransaction: building tx with ${instructions.length} instruction(s), signers=${1 + (additionalSigners?.length ?? 0)}`,
+    );
     const blockhash = await this.rpc.getLatestBlockhash().send();
 
     const allSigners = [payer, ...(additionalSigners ?? [])];
@@ -1423,12 +1611,20 @@ export class SolanaEngine {
       await signTransactionMessageWithSigners(transactionMessage);
     const signature = getSignatureFromTransaction(signedTransaction);
 
+    this.logger.debug(
+      `solanaEngine.buildAndSendTransaction: signed, signature=${signature}, sending...`,
+    );
+
     assertIsSendableTransaction(signedTransaction);
     assertIsTransactionWithBlockhashLifetime(signedTransaction);
 
     await this.sendAndConfirmTx(signedTransaction, {
       commitment: "confirmed",
     });
+
+    this.logger.debug(
+      `solanaEngine.buildAndSendTransaction: confirmed, signature=${signature}`,
+    );
 
     return signature;
   }
@@ -1485,6 +1681,9 @@ export class SolanaEngine {
 
     const maybeAta = await fetchMaybeToken(this.rpc, ataAddress);
     if (!maybeAta.exists) {
+      this.logger.warn(
+        `solanaEngine.resolvePayerTokenAccount: ATA not found, payer=${payerAddress}, mint=${mint.address}`,
+      );
       throw new BridgeValidationError(
         `Associated token account does not exist for payer ${payerAddress}, mint ${mint.address}`,
         { stage: "initiate" },
