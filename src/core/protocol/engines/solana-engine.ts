@@ -102,6 +102,8 @@ const DEFAULT_RELAY_GAS_LIMIT = 200_000n;
 
 interface SolanaEngineConfig {
   rpcUrl: string;
+  /** Optional WebSocket URL for RPC subscriptions. If not provided, derived from `rpcUrl`. */
+  wssUrl?: string;
   payer: KeyPairSigner;
   bridgeProgram: SolAddress;
   relayerProgram: SolAddress;
@@ -276,9 +278,14 @@ export class SolanaEngine {
     this.logger = opts.logger ?? NOOP_LOGGER;
     this.rpc = createSolanaRpc(this.config.rpcUrl);
 
-    const url = new URL(this.config.rpcUrl);
-    const wsScheme = url.protocol === "http:" ? "ws" : "wss";
-    const wssUrl = `${wsScheme}://${url.host}${url.pathname}${url.search}`;
+    let wssUrl: string;
+    if (this.config.wssUrl !== undefined) {
+      wssUrl = this.config.wssUrl;
+    } else {
+      const url = new URL(this.config.rpcUrl);
+      const wsScheme = url.protocol === "http:" ? "ws" : "wss";
+      wssUrl = `${wsScheme}://${url.host}${url.pathname}${url.search}`;
+    }
     const rpcSubscriptions = createSolanaRpcSubscriptions(wssUrl);
     this.sendAndConfirmTx = sendAndConfirmTransactionFactory({
       rpc: this.rpc,

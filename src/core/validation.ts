@@ -16,27 +16,39 @@ import {
 
 const MAX_TRANSFER_AMOUNT = 2n ** 64n - 1n;
 
-export function validateRpcUrl(rpcUrl: string): void {
-  if (rpcUrl.trim() === "") {
+function validateUrlScheme(
+  url: string,
+  allowedProtocols: string[],
+  label: string,
+): void {
+  if (url.trim() === "") {
     throw new BridgeValidationError(
-      `Invalid RPC URL: expected a non-empty HTTP(S) URL, got "${truncate(String(rpcUrl))}"`,
+      `Invalid ${label}: expected a non-empty URL, got "${truncate(String(url))}"`,
     );
   }
 
   let parsed: URL;
   try {
-    parsed = new URL(rpcUrl);
+    parsed = new URL(url);
   } catch {
     throw new BridgeValidationError(
-      `Invalid RPC URL: not a valid URL, got "${truncate(rpcUrl)}"`,
+      `Invalid ${label}: not a valid URL, got "${truncate(url)}"`,
     );
   }
 
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+  if (!allowedProtocols.includes(parsed.protocol)) {
     throw new BridgeValidationError(
-      `Invalid RPC URL: expected http: or https: scheme, got "${parsed.protocol}" in "${truncate(rpcUrl)}"`,
+      `Invalid ${label}: expected ${allowedProtocols.join(" or ")} scheme, got "${parsed.protocol}" in "${truncate(url)}"`,
     );
   }
+}
+
+export function validateRpcUrl(rpcUrl: string): void {
+  validateUrlScheme(rpcUrl, ["http:", "https:"], "RPC URL");
+}
+
+export function validateWssUrl(wssUrl: string): void {
+  validateUrlScheme(wssUrl, ["ws:", "wss:"], "WebSocket URL");
 }
 
 export function validateAction(action: BridgeAction, route: BridgeRoute): void {

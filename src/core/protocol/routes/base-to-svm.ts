@@ -125,6 +125,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     this.solanaEngine = new SolanaEngine({
       config: {
         rpcUrl: this.solana.rpcUrl,
+        wssUrl: this.solana.wssUrl,
         payer: this.solana.payer,
         bridgeProgram: this.solanaDeployment.bridgeProgram,
         relayerProgram: this.solanaDeployment.relayerProgram,

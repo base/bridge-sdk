@@ -4,7 +4,7 @@ import { makeEvmAdapter } from "../src/adapters/chains/evm/adapter";
 import type { EvmAdapterConfig } from "../src/adapters/chains/evm/types";
 import { makeSolanaAdapter } from "../src/adapters/chains/solana/adapter";
 import { BridgeValidationError } from "../src/core/errors";
-import { validateRpcUrl } from "../src/core/validation";
+import { validateRpcUrl, validateWssUrl } from "../src/core/validation";
 
 /** Minimal mock that satisfies the KeyPairSigner interface shape at runtime. */
 const mockPayer = {
@@ -85,6 +85,69 @@ describe("validateRpcUrl", () => {
   });
 });
 
+describe("validateWssUrl", () => {
+  describe("rejects invalid URLs", () => {
+    test("throws for empty string", () => {
+      expect(() => validateWssUrl("")).toThrow("Invalid WebSocket URL");
+    });
+
+    test("throws for whitespace-only string", () => {
+      expect(() => validateWssUrl("   ")).toThrow("Invalid WebSocket URL");
+    });
+
+    test("throws for non-URL string", () => {
+      expect(() => validateWssUrl("not-a-url")).toThrow(
+        "Invalid WebSocket URL",
+      );
+    });
+
+    test("throws for http:// scheme", () => {
+      expect(() => validateWssUrl("http://localhost:8899")).toThrow(
+        "expected ws: or wss: scheme",
+      );
+    });
+
+    test("throws for https:// scheme", () => {
+      expect(() => validateWssUrl("https://api.example.com")).toThrow(
+        "expected ws: or wss: scheme",
+      );
+    });
+  });
+
+  describe("accepts valid URLs", () => {
+    test("accepts wss:// URL", () => {
+      expect(() =>
+        validateWssUrl("wss://api.mainnet-beta.solana.com"),
+      ).not.toThrow();
+    });
+
+    test("accepts ws:// URL (localhost dev)", () => {
+      expect(() => validateWssUrl("ws://localhost:8900")).not.toThrow();
+    });
+
+    test("accepts wss:// URL with path", () => {
+      expect(() =>
+        validateWssUrl("wss://rpc.example.com/v1/mainnet"),
+      ).not.toThrow();
+    });
+  });
+
+  describe("error properties", () => {
+    test("thrown error is a BridgeValidationError", () => {
+      let error: BridgeValidationError | undefined;
+      try {
+        validateWssUrl("");
+      } catch (e) {
+        error = e as BridgeValidationError;
+      }
+      expect(error).toBeInstanceOf(BridgeValidationError);
+      expect(error?.code).toBe("VALIDATION");
+      expect(error?.outcome).toBe("user_fix");
+      expect(error?.stage).toBe("initiate");
+    });
+  });
+});
+
 describe("makeSolanaAdapter config validation", () => {
   test("throws for empty rpcUrl", () => {
     expect(() => makeSolanaAdapter({ rpcUrl: "", payer: mockPayer })).toThrow(
@@ -120,6 +183,81 @@ describe("makeSolanaAdapter config validation", () => {
     expect(() =>
       makeSolanaAdapter({ rpcUrl: VALID_RPC, payer: mockPayer }),
     ).not.toThrow();
+  });
+
+  describe("wssUrl validation", () => {
+    test("accepts config without wssUrl (optional)", () => {
+      expect(() =>
+        makeSolanaAdapter({ rpcUrl: VALID_RPC, payer: mockPayer }),
+      ).not.toThrow();
+    });
+
+    test("accepts valid wss:// URL", () => {
+      expect(() =>
+        makeSolanaAdapter({
+          rpcUrl: VALID_RPC,
+          wssUrl: "wss://api.mainnet-beta.solana.com",
+          payer: mockPayer,
+        }),
+      ).not.toThrow();
+    });
+
+    test("accepts valid ws:// URL", () => {
+      expect(() =>
+        makeSolanaAdapter({
+          rpcUrl: "http://localhost:8899",
+          wssUrl: "ws://localhost:8900",
+          payer: mockPayer,
+        }),
+      ).not.toThrow();
+    });
+
+    test("throws for http:// wssUrl", () => {
+      expect(() =>
+        makeSolanaAdapter({
+          rpcUrl: VALID_RPC,
+          wssUrl: "http://localhost:8899",
+          payer: mockPayer,
+        }),
+      ).toThrow("expected ws: or wss: scheme");
+    });
+
+    test("throws for empty wssUrl", () => {
+      expect(() =>
+        makeSolanaAdapter({
+          rpcUrl: VALID_RPC,
+          wssUrl: "",
+          payer: mockPayer,
+        }),
+      ).toThrow("Invalid WebSocket URL");
+    });
+
+    test("throws for invalid wssUrl", () => {
+      expect(() =>
+        makeSolanaAdapter({
+          rpcUrl: VALID_RPC,
+          wssUrl: "not-a-url",
+          payer: mockPayer,
+        }),
+      ).toThrow("Invalid WebSocket URL");
+    });
+
+    test("wssUrl is available on the returned adapter", () => {
+      const adapter = makeSolanaAdapter({
+        rpcUrl: VALID_RPC,
+        wssUrl: "wss://custom.rpc.example.com",
+        payer: mockPayer,
+      });
+      expect(adapter.wssUrl).toBe("wss://custom.rpc.example.com");
+    });
+
+    test("wssUrl is undefined when not provided", () => {
+      const adapter = makeSolanaAdapter({
+        rpcUrl: VALID_RPC,
+        payer: mockPayer,
+      });
+      expect(adapter.wssUrl).toBeUndefined();
+    });
   });
 });
 

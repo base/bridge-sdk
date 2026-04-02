@@ -8,7 +8,7 @@ import {
   fetchOutgoingMessage,
   type OutgoingMessage,
 } from "../../../clients/ts/src/bridge";
-import { validateRpcUrl } from "../../../core/validation";
+import { validateRpcUrl, validateWssUrl } from "../../../core/validation";
 import type { SolanaAdapterConfig, SolanaChainAdapter } from "./types";
 
 /**
@@ -30,6 +30,9 @@ export function makeSolanaAdapter(
   config: SolanaAdapterConfig,
 ): SolanaChainAdapter {
   validateRpcUrl(config.rpcUrl);
+  if (config.wssUrl !== undefined) {
+    validateWssUrl(config.wssUrl);
+  }
 
   const payer = config.payer;
   const chain = config.chain ?? solanaMainnet;
@@ -39,6 +42,7 @@ export function makeSolanaAdapter(
     kind: "solana",
     chain,
     rpcUrl: config.rpcUrl,
+    wssUrl: config.wssUrl,
     payer,
     async ping() {
       await rpc.getLatestBlockhash().send();
