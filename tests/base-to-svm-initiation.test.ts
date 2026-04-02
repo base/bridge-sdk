@@ -116,8 +116,11 @@ function makeTransferRequest(
   };
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: typed mock internals require any for generic call arg access
-function mockCallArg(stub: { mock: { calls: any[] } }, callIndex = 0): Record<string, unknown> {
+function mockCallArg(
+  // biome-ignore lint/suspicious/noExplicitAny: typed mock internals require any for generic call arg access
+  stub: { mock: { calls: any[] } },
+  callIndex = 0,
+): Record<string, unknown> {
   return stub.mock.calls[callIndex][0] as Record<string, unknown>;
 }
 
@@ -160,11 +163,11 @@ describe("BaseToSvmRouteAdapter.initiate – call path", () => {
     const op = await adapter.initiate(defaultCallReq);
 
     expect(op.messageRef.derived).toBeDefined();
-    expect(op.messageRef.derived!.txHash).toBe(FAKE_TX_HASH);
-    expect(op.messageRef.derived!.nonce).toBe(FAKE_NONCE.toString());
-    expect(op.messageRef.derived!.sender).toBe(FAKE_SENDER);
-    expect(op.messageRef.derived!.data).toBe(FAKE_DATA);
-    expect(op.messageRef.derived!.mmrRoot).toBe(FAKE_MMR_ROOT);
+    expect(op.messageRef.derived?.txHash).toBe(FAKE_TX_HASH);
+    expect(op.messageRef.derived?.nonce).toBe(FAKE_NONCE.toString());
+    expect(op.messageRef.derived?.sender).toBe(FAKE_SENDER);
+    expect(op.messageRef.derived?.data).toBe(FAKE_DATA);
+    expect(op.messageRef.derived?.mmrRoot).toBe(FAKE_MMR_ROOT);
   });
 
   test("preserves request in returned operation", async () => {
@@ -297,9 +300,15 @@ describe("BaseToSvmRouteAdapter.initiate – transfer path", () => {
   test.each([
     { address: "0xTokenA", amount: 100n },
     { address: "0xTokenB", amount: 200n },
-  ])("routes $address through its mapped Solana mint", async ({ address, amount }) => {
+  ])("routes $address through its mapped Solana mint", async ({
+    address,
+    amount,
+  }) => {
     const { adapter: a, engineStub: es } = buildAdapter({
-      tokenMapping: { "0xTokenA": SOL_WRAPPED_SOL_MINT, "0xTokenB": SOL_CONFIG_PROGRAM },
+      tokenMapping: {
+        "0xTokenA": SOL_WRAPPED_SOL_MINT,
+        "0xTokenB": SOL_CONFIG_PROGRAM,
+      },
     });
 
     const req = makeTransferRequest({ address, amount });
@@ -307,7 +316,10 @@ describe("BaseToSvmRouteAdapter.initiate – transfer path", () => {
     const op = await a.initiate(req);
     expect(op.initiationTx).toBe(FAKE_TX_HASH);
     expect(es.bridgeToken).toHaveBeenCalledTimes(1);
-    const transfer = mockCallArg(es.bridgeToken).transfer as Record<string, unknown>;
+    const transfer = mockCallArg(es.bridgeToken).transfer as Record<
+      string,
+      unknown
+    >;
     expect(transfer.localToken).toBe(address);
   });
 
