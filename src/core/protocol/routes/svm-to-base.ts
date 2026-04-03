@@ -757,8 +757,11 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
         stage: "execute",
       },
     );
-    const executionTx = confirmed.receipt?.transactionHash
-      ?? (confirmed.alreadyExecuted ? this.getDestinationOuterHash(ref) : undefined);
+    const executionTx =
+      confirmed.receipt?.transactionHash ??
+      (confirmed.alreadyExecuted
+        ? this.getDestinationOuterHash(ref)
+        : undefined);
     return { messageRef: ref, executionTx };
   }
 

@@ -4,13 +4,13 @@ import {
   BridgeProofNotAvailableError,
   BridgeUnsupportedActionError,
 } from "../src/core/errors";
-import { FAKE_TX_HASH, makeReceipt } from "./test-helpers";
 import {
   BASE_MAINNET_CHAIN_ID,
   SOLANA_MAINNET_CHAIN_ID,
 } from "../src/core/protocol/router";
 import { BaseToSvmRouteAdapter } from "../src/core/protocol/routes/base-to-svm";
 import type { BridgeRequest, BridgeRoute } from "../src/core/types";
+import { FAKE_TX_HASH, makeReceipt } from "./test-helpers";
 
 const FAKE_MESSAGE_HASH =
   "0x1111111111111111111111111111111111111111111111111111111111111111" as const;
@@ -66,12 +66,8 @@ function wireAdapter(
 
 function buildAdapter(opts?: { tokenMapping?: Record<string, string> }) {
   const engineStub = {
-    bridgeCall: mock(() =>
-      Promise.resolve({ receipt: makeReceipt() }),
-    ),
-    bridgeToken: mock(() =>
-      Promise.resolve({ receipt: makeReceipt() }),
-    ),
+    bridgeCall: mock(() => Promise.resolve({ receipt: makeReceipt() })),
+    bridgeToken: mock(() => Promise.resolve({ receipt: makeReceipt() })),
   };
 
   return { adapter: wireAdapter(engineStub, opts), engineStub };
@@ -396,9 +392,7 @@ describe("BaseToSvmRouteAdapter.initiate – edge cases", () => {
       bridgeCall: mock(() =>
         Promise.reject(new Error("Simulated RPC failure")),
       ),
-      bridgeToken: mock(() =>
-        Promise.resolve({ receipt: makeReceipt() }),
-      ),
+      bridgeToken: mock(() => Promise.resolve({ receipt: makeReceipt() })),
     };
     const adapter = wireAdapter(engineStub);
 
@@ -421,9 +415,7 @@ describe("BaseToSvmRouteAdapter.initiate – edge cases", () => {
 
   test("propagates engine errors from bridgeToken", async () => {
     const engineStub = {
-      bridgeCall: mock(() =>
-        Promise.resolve({ receipt: makeReceipt() }),
-      ),
+      bridgeCall: mock(() => Promise.resolve({ receipt: makeReceipt() })),
       bridgeToken: mock(() =>
         Promise.reject(new Error("Simulated token bridge failure")),
       ),
@@ -451,12 +443,8 @@ describe("BaseToSvmRouteAdapter.initiate – edge cases", () => {
 
   test("propagates extractMessageInitiated error when zero events found (call path)", async () => {
     const engineStub = {
-      bridgeCall: mock(() =>
-        Promise.resolve({ receipt: makeReceipt() }),
-      ),
-      bridgeToken: mock(() =>
-        Promise.resolve({ receipt: makeReceipt() }),
-      ),
+      bridgeCall: mock(() => Promise.resolve({ receipt: makeReceipt() })),
+      bridgeToken: mock(() => Promise.resolve({ receipt: makeReceipt() })),
     };
     const adapter = wireAdapter(engineStub);
 
@@ -487,12 +475,8 @@ describe("BaseToSvmRouteAdapter.initiate – edge cases", () => {
 
   test("propagates extractMessageInitiated error when multiple events found (transfer path)", async () => {
     const engineStub = {
-      bridgeCall: mock(() =>
-        Promise.resolve({ receipt: makeReceipt() }),
-      ),
-      bridgeToken: mock(() =>
-        Promise.resolve({ receipt: makeReceipt() }),
-      ),
+      bridgeCall: mock(() => Promise.resolve({ receipt: makeReceipt() })),
+      bridgeToken: mock(() => Promise.resolve({ receipt: makeReceipt() })),
     };
     const adapter = wireAdapter(engineStub, {
       tokenMapping: { "0xToken": SOL_WRAPPED_SOL_MINT },
@@ -525,12 +509,8 @@ describe("BaseToSvmRouteAdapter.initiate – edge cases", () => {
 
   test("propagates RPC error from extractMessageInitiated receipt fetch", async () => {
     const engineStub = {
-      bridgeCall: mock(() =>
-        Promise.resolve({ receipt: makeReceipt() }),
-      ),
-      bridgeToken: mock(() =>
-        Promise.resolve({ receipt: makeReceipt() }),
-      ),
+      bridgeCall: mock(() => Promise.resolve({ receipt: makeReceipt() })),
+      bridgeToken: mock(() => Promise.resolve({ receipt: makeReceipt() })),
     };
     const adapter = wireAdapter(engineStub);
 
@@ -574,9 +554,7 @@ describe("BaseToSvmRouteAdapter.initiate – edge cases", () => {
 
     const engineStub = {
       bridgeCall: mock(() => Promise.reject(subclassError)),
-      bridgeToken: mock(() =>
-        Promise.resolve({ receipt: makeReceipt() }),
-      ),
+      bridgeToken: mock(() => Promise.resolve({ receipt: makeReceipt() })),
     };
     const adapter = wireAdapter(engineStub);
 
