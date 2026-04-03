@@ -4,7 +4,7 @@ import {
   createSolanaRpc,
   address as solAddress,
 } from "@solana/kit";
-import type { Hash, Hex } from "viem";
+import type { Hash, Hex, TransactionReceipt } from "viem";
 import { toBytes } from "viem";
 import type { EvmChainAdapter } from "../../../adapters/chains/evm/types";
 import type { SolanaChainAdapter } from "../../../adapters/chains/solana/types";
@@ -39,7 +39,10 @@ import type {
   StatusOptions,
 } from "../../types";
 import { isSolanaDestinationCall } from "../../utils";
-import { BaseEngine } from "../engines/base-engine";
+import {
+  BaseEngine,
+  type ConfirmedTransaction,
+} from "../engines/base-engine";
 import { SOLANA_BASE_TX_FEE } from "../engines/constants";
 import { SolanaEngine } from "../engines/solana-engine";
 import { decodeMessageInitiatedEvents } from "../events";
@@ -368,12 +371,12 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     }
 
     const ixs = this.convertToIx(destCall.call.instructions);
-    const txHash = await wrapEngineError(
+    const confirmed = await wrapEngineError(
       () => this.baseEngine.bridgeCall({ ixs }),
       { route: req.route, chain: req.route.sourceChain, stage: "initiate" },
     );
 
-    return this.buildOperation(req, txHash);
+    return this.buildOperation(req, confirmed);
   }
 
   /**
@@ -407,7 +410,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     const ixs = this.extractSolanaIxs(req.action.call);
     const { recipient, amount } = req.action;
 
-    const txHash = await wrapEngineError(
+    const confirmed = await wrapEngineError(
       () =>
         this.baseEngine.bridgeToken({
           transfer: {
@@ -421,7 +424,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       { route: req.route, chain: req.route.sourceChain, stage: "initiate" },
     );
 
-    return this.buildOperation(req, txHash);
+    return this.buildOperation(req, confirmed);
   }
 
   /**
@@ -430,13 +433,24 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
    */
   private async buildOperation(
     req: BridgeRequest,
-    txHash: Hash,
+    confirmed: ConfirmedTransaction,
   ): Promise<BridgeOperation> {
+    const { receipt } = confirmed;
+    if (!receipt) {
+      throw new BridgeInvariantViolationError(
+        "bridge initiation must return a receipt",
+        { stage: "initiate", route: req.route },
+      );
+    }
+
     const { messageHash, nonce, sender, data, mmrRoot } =
-      await this.extractMessageInitiated(txHash, {
-        route: req.route,
-        chain: req.route.sourceChain,
-      });
+      this.extractMessageInitiated(
+        {
+          route: req.route,
+          chain: req.route.sourceChain,
+        },
+        receipt,
+      );
 
     const messageRef: MessageRef = {
       route: req.route,
@@ -445,7 +459,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
         id: { scheme: "evm:messageHash", value: messageHash },
       },
       derived: {
-        txHash,
+        txHash: receipt.transactionHash,
         nonce: nonce.toString(),
         sender,
         data,
@@ -456,7 +470,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     return {
       request: req,
       messageRef,
-      initiationTx: txHash,
+      initiationTx: receipt.transactionHash,
     };
   }
 
@@ -749,21 +763,17 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     return pda;
   }
 
-  private async extractMessageInitiated(
-    txHash: Hash,
+  private extractMessageInitiated(
     context: BridgeContext,
-  ): Promise<{
+    confirmedReceipt: TransactionReceipt,
+  ): {
     messageHash: Hex;
     mmrRoot: Hex;
     nonce: bigint;
     sender: Hex;
     data: Hex;
-  }> {
-    const receipt = await wrapEngineError(
-      () => this.evm.publicClient.getTransactionReceipt({ hash: txHash }),
-      { route: context.route, chain: context.chain, stage: "initiate" },
-    );
-    const [e, ...rest] = decodeMessageInitiatedEvents(receipt.logs);
+  } {
+    const [e, ...rest] = decodeMessageInitiatedEvents(confirmedReceipt.logs);
 
     if (!e || rest.length > 0) {
       throw new BridgeProofNotAvailableError(

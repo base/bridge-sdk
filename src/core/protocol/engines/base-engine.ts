@@ -8,6 +8,9 @@ import {
   type Hex,
   http,
   type PublicClient,
+  type ReplacementReason,
+  type TransactionReceipt,
+  WaitForTransactionReceiptTimeoutError,
   toHex,
   type WalletClient,
 } from "viem";
@@ -27,6 +30,7 @@ import {
   BridgeMessageFailedError,
   BridgeProofNotAvailableError,
   BridgeTimeoutError,
+  BridgeTransactionDroppedError,
   BridgeValidationError,
 } from "../../errors";
 import type { BridgeContext, EvmCall, RouteStep } from "../../types";
@@ -36,18 +40,37 @@ import {
   DEFAULT_EVM_GAS_LIMIT,
   DEFAULT_MONITOR_POLL_INTERVAL_MS,
   DEFAULT_MONITOR_TIMEOUT_MS,
+  DEFAULT_TX_CONFIRMATION_COUNT,
+  DEFAULT_TX_CONFIRMATION_POLL_INTERVAL_MS,
+  DEFAULT_TX_CONFIRMATION_TIMEOUT_MS,
 } from "./constants";
+
+export interface TransactionConfirmationConfig {
+  /** Number of block confirmations to wait for (default: 1). */
+  confirmations?: number;
+  /** Maximum time (ms) to wait for a receipt before treating the tx as dropped (default: 60 000). */
+  timeoutMs?: number;
+  /** Polling interval (ms) when waiting for a receipt (default: 2 000). */
+  pollIntervalMs?: number;
+}
 
 interface BaseEngineConfig {
   rpcUrl: string;
   bridgeContract: EvmAddress;
   chain: Chain;
   privateKey?: Hex;
+  /** Transaction confirmation settings applied after every EVM write. */
+  confirmation?: TransactionConfirmationConfig;
 }
 
 interface BaseEngineOpts {
   config: BaseEngineConfig;
   logger?: Logger;
+}
+
+export interface ConfirmedTransaction {
+  receipt?: TransactionReceipt;
+  alreadyExecuted?: boolean;
 }
 
 interface BaseBridgeCallOpts {
@@ -113,6 +136,96 @@ export class BaseEngine {
     };
   }
 
+  private async confirmTransaction(
+    hash: Hash,
+    stage: RouteStep,
+  ): Promise<TransactionReceipt> {
+    const {
+      confirmations = DEFAULT_TX_CONFIRMATION_COUNT,
+      timeoutMs = DEFAULT_TX_CONFIRMATION_TIMEOUT_MS,
+      pollIntervalMs = DEFAULT_TX_CONFIRMATION_POLL_INTERVAL_MS,
+    } = this.config.confirmation ?? {};
+
+    this.logger.debug(
+      `baseEngine.confirmTransaction: waiting for receipt, hash=${hash}, confirmations=${confirmations}, timeout=${timeoutMs}ms`,
+    );
+
+    // Capture replacement info outside the callback so we can check it
+    // reliably after the promise resolves.  Throwing from `onReplaced` is
+    // unreliable because viem treats it as a notification callback and may
+    // leave the promise in an unresolved state.
+    let droppedReason: { reason: ReplacementReason; newHash: Hash } | undefined;
+
+    let receipt: TransactionReceipt;
+    try {
+      receipt = await this.publicClient.waitForTransactionReceipt({
+        hash,
+        confirmations,
+        timeout: timeoutMs,
+        pollingInterval: pollIntervalMs,
+        onReplaced: (replacement) => {
+          // "repriced" means gas price changed but same to/value/data — the
+          // bridge call was still executed successfully.  Log and allow the
+          // replacement receipt to resolve normally.
+          if (replacement.reason === "repriced") {
+            this.logger.info(
+              `baseEngine.confirmTransaction: transaction repriced, hash=${hash}, newHash=${replacement.transaction.hash}`,
+            );
+            return;
+          }
+
+          // "cancelled" or "replaced" means the original intent was
+          // superseded — the bridge call was NOT executed.  Record the
+          // reason and let the promise resolve; we check below.
+          this.logger.warn(
+            `baseEngine.confirmTransaction: transaction ${replacement.reason}, hash=${hash}, newHash=${replacement.transaction.hash}`,
+          );
+          droppedReason = {
+            reason: replacement.reason,
+            newHash: replacement.transaction.hash,
+          };
+        },
+      });
+    } catch (e) {
+      if (e instanceof WaitForTransactionReceiptTimeoutError) {
+        this.logger.warn(
+          `baseEngine.confirmTransaction: timed out waiting for receipt, hash=${hash}`,
+        );
+        throw new BridgeTransactionDroppedError(
+          `Transaction receipt not found within ${timeoutMs}ms — the transaction may have been dropped from the mempool: ${hash}`,
+          { stage, cause: e },
+        );
+      }
+
+      throw e;
+    }
+
+    // Check if the transaction was cancelled or replaced after the promise
+    // resolved.  viem resolves with the *replacement* receipt regardless, so
+    // the receipt itself is valid but represents a different intent.
+    if (droppedReason) {
+      throw new BridgeTransactionDroppedError(
+        `Transaction was ${droppedReason.reason}: original=${hash}, replacement=${droppedReason.newHash}`,
+        { stage },
+      );
+    }
+
+    if (receipt.status === "reverted") {
+      this.logger.error(
+        `baseEngine.confirmTransaction: transaction reverted, hash=${hash}, gasUsed=${receipt.gasUsed}`,
+      );
+      throw new BridgeExecutionRevertedError(
+        `Transaction reverted on-chain: ${hash}`,
+        { stage },
+      );
+    }
+
+    this.logger.info(
+      `baseEngine.confirmTransaction: confirmed, hash=${receipt.transactionHash}, block=${receipt.blockNumber}, gasUsed=${receipt.gasUsed}`,
+    );
+    return receipt;
+  }
+
   async estimateGasForCall(call: EvmCall): Promise<bigint> {
     this.logger.debug(
       `baseEngine.estimateGas: to=${call.to}, value=${call.value ?? 0n}`,
@@ -127,7 +240,7 @@ export class BaseEngine {
     return gas;
   }
 
-  async bridgeCall(opts: BaseBridgeCallOpts): Promise<Hash> {
+  async bridgeCall(opts: BaseBridgeCallOpts): Promise<ConfirmedTransaction> {
     const { walletClient, account } = this.requireWallet();
     const formattedIxs = this.formatIxs(opts.ixs);
 
@@ -147,10 +260,12 @@ export class BaseEngine {
     this.logger.info("baseEngine.bridgeCall: submitting transaction");
     const txHash = await walletClient.writeContract(request);
     this.logger.info(`baseEngine.bridgeCall: submitted txHash=${txHash}`);
-    return txHash;
+
+    const receipt = await this.confirmTransaction(txHash, "initiate");
+    return { receipt };
   }
 
-  async bridgeToken(opts: BaseBridgeTokenOpts): Promise<Hash> {
+  async bridgeToken(opts: BaseBridgeTokenOpts): Promise<ConfirmedTransaction> {
     const { walletClient, account } = this.requireWallet();
     const formattedIxs = this.formatIxs(opts.ixs);
 
@@ -177,7 +292,9 @@ export class BaseEngine {
     this.logger.info("baseEngine.bridgeToken: submitting transaction");
     const txHash = await walletClient.writeContract(request);
     this.logger.info(`baseEngine.bridgeToken: submitted txHash=${txHash}`);
-    return txHash;
+
+    const receipt = await this.confirmTransaction(txHash, "initiate");
+    return { receipt };
   }
 
   async generateProof(
@@ -345,7 +462,7 @@ export class BaseEngine {
       timeoutMs?: number;
       pollIntervalMs?: number;
     } = {},
-  ): Promise<Hash> {
+  ): Promise<ConfirmedTransaction> {
     const { walletClient, account } = this.requireWallet("execute");
 
     const { outerHash, evmMessage } = buildEvmIncomingMessage(
@@ -383,12 +500,11 @@ export class BaseEngine {
         allowFailure: false,
       });
 
-    // Check if message was already executed
     if (successesResult) {
       this.logger.info(
         `baseEngine.executeMessage: already succeeded, outerHash=${outerHash}`,
       );
-      return outerHash;
+      return { alreadyExecuted: true };
     }
 
     // Check if message previously failed
@@ -429,7 +545,7 @@ export class BaseEngine {
     this.logger.info(
       `baseEngine.executeMessage: submitting relayMessages, outerHash=${outerHash}`,
     );
-    const tx = await walletClient.writeContract({
+    const txHash = await walletClient.writeContract({
       address: this.config.bridgeContract,
       abi: BRIDGE_ABI,
       functionName: "relayMessages",
@@ -439,9 +555,11 @@ export class BaseEngine {
     });
 
     this.logger.info(
-      `baseEngine.executeMessage: relayed successfully, txHash=${tx}`,
+      `baseEngine.executeMessage: submitted txHash=${txHash}, awaiting confirmation`,
     );
-    return tx;
+
+    const receipt = await this.confirmTransaction(txHash, "execute");
+    return { receipt };
   }
 
   private async waitForApproval(

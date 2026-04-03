@@ -79,6 +79,7 @@ export type BridgeErrorCode =
   | "CONFIG_ERROR"
   | "RPC_ERROR"
   | "TIMEOUT"
+  | "TRANSACTION_DROPPED"
   | "NOT_FINAL"
   | "PROOF_NOT_AVAILABLE"
   | "ALREADY_PROVEN"
@@ -288,6 +289,28 @@ export class BridgeValidationError extends BridgeError {
       stage: args?.stage ?? "initiate",
       route: args?.route,
       cause: args?.cause,
+    });
+  }
+}
+
+export class BridgeTransactionDroppedError extends BridgeError {
+  constructor(
+    message: string,
+    args: {
+      stage: RouteStep;
+      route?: BridgeRoute;
+      chain?: ChainId;
+      cause?: unknown;
+    },
+  ) {
+    super({
+      message,
+      code: "TRANSACTION_DROPPED",
+      outcome: "retry",
+      stage: args.stage,
+      route: args.route,
+      chain: args.chain,
+      cause: args.cause,
     });
   }
 }

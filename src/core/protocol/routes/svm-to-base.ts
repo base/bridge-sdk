@@ -744,7 +744,7 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
       { route: ref.route, chain: ref.route.sourceChain, stage: "execute" },
     );
 
-    const tx = await wrapEngineError(
+    const confirmed = await wrapEngineError(
       () =>
         this.baseEngine.executeMessage(
           outgoing,
@@ -757,7 +757,9 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
         stage: "execute",
       },
     );
-    return { messageRef: ref, executionTx: tx };
+    const executionTx = confirmed.receipt?.transactionHash
+      ?? (confirmed.alreadyExecuted ? this.getDestinationOuterHash(ref) : undefined);
+    return { messageRef: ref, executionTx };
   }
 
   async status(
