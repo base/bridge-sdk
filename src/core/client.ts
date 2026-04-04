@@ -1,5 +1,8 @@
 import { type Logger, NOOP_LOGGER } from "../utils/logger";
-import { BridgeUnsupportedRouteError } from "./errors";
+import {
+  BridgeUnsupportedRouteError,
+  BridgeValidationError,
+} from "./errors";
 import { mergeBridgeDeployments } from "./protocol/deployments";
 import {
   resolveBridgeRoute,
@@ -225,7 +228,7 @@ export function createBridgeClient(config: BridgeClientConfig): BridgeClient {
   for (const adapter of Object.values(config.chains)) {
     const id = adapter.chain.id;
     if (chains[id]) {
-      throw new Error(
+      throw new BridgeValidationError(
         `Duplicate chain adapter registered for ${id}. Ensure each adapter has a unique chain id.`,
       );
     }
