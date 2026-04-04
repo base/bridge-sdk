@@ -74,8 +74,6 @@ test("pollingMonitor: works normally without signal", async () => {
   const statuses: ExecutionStatus["type"][] = [
     "Unknown",
     "Initiated",
-    "FinalizedOnSource",
-    "Proven",
     "Executable",
     "Executed",
   ];
@@ -92,8 +90,6 @@ test("pollingMonitor: works normally without signal", async () => {
   expect(results.map((r) => r.type)).toEqual([
     "Unknown",
     "Initiated",
-    "FinalizedOnSource",
-    "Proven",
     "Executable",
     "Executed",
   ]);
@@ -171,8 +167,6 @@ test("pollingMonitor: abort after multiple yields collects partial results", asy
   const statuses: ExecutionStatus["type"][] = [
     "Unknown",
     "Initiated",
-    "FinalizedOnSource",
-    "Proven",
     "Executable",
     "Executed",
   ];
@@ -201,7 +195,7 @@ test("pollingMonitor: abort after multiple yields collects partial results", asy
   expect(results.map((r) => r.type)).toEqual([
     "Unknown",
     "Initiated",
-    "FinalizedOnSource",
+    "Executable",
   ]);
 });
 

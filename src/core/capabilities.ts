@@ -15,10 +15,6 @@ export function isAllowedTransition(
     case "Unknown":
       return to === "Initiated";
     case "Initiated":
-      return to === "FinalizedOnSource" || to === "Executable";
-    case "FinalizedOnSource":
-      return to === "Proven" || to === "Executable";
-    case "Proven":
       return to === "Executable";
     case "Executable":
       return to === "Executing" || to === "Executed";

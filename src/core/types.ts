@@ -323,9 +323,7 @@ export interface MessageRef {
 export type ExecutionStatus =
   | { type: "Unknown"; at: number }
   | { type: "Initiated"; at: number; sourceTx?: string }
-  | { type: "FinalizedOnSource"; at: number; sourceFinality?: string }
-  | { type: "Proven"; at: number; proofTx?: string }
-  | { type: "Executable"; at: number }
+  | { type: "Executable"; at: number; proofTx?: string }
   | { type: "Executing"; at: number; executionTx?: string }
   | { type: "Executed"; at: number; executionTx?: string }
   | { type: "Failed"; at: number; reason: string; executionTx?: string }

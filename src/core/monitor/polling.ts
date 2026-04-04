@@ -9,12 +9,8 @@ function stableStatusKey(s: ExecutionStatus): string {
       return "Unknown";
     case "Initiated":
       return `Initiated:${s.sourceTx ?? ""}`;
-    case "FinalizedOnSource":
-      return `FinalizedOnSource:${s.sourceFinality ?? ""}`;
-    case "Proven":
-      return `Proven:${s.proofTx ?? ""}`;
     case "Executable":
-      return "Executable";
+      return `Executable:${s.proofTx ?? ""}`;
     case "Executing":
       return `Executing:${s.executionTx ?? ""}`;
     case "Executed":

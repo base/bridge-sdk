@@ -569,7 +569,11 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       return { messageRef: ref };
     }
 
-    return { messageRef: ref, proofTx: res.signature };
+    const updatedRef = {
+      ...ref,
+      derived: { ...ref.derived, proofTx: res.signature },
+    };
+    return { messageRef: updatedRef, proofTx: res.signature };
   }
 
   private async proveWithBuffer(
@@ -628,7 +632,11 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
         return { messageRef: ref };
       }
 
-      return { messageRef: ref, proofTx: res.signature };
+      const updatedRef = {
+        ...ref,
+        derived: { ...ref.derived, proofTx: res.signature },
+      };
+      return { messageRef: updatedRef, proofTx: res.signature };
     } catch (e) {
       try {
         await this.solanaEngine.closeProveBuffer({ bufferAddress });
@@ -736,7 +744,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       return { type: "Executed", at };
     }
 
-    return { type: "Executable", at };
+    return { type: "Executable", at, proofTx: ref.derived?.proofTx };
   }
 
   monitor(
