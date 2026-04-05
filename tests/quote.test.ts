@@ -3,6 +3,10 @@ import {
   BASE_MAINNET_CHAIN_ID,
   SOLANA_MAINNET_CHAIN_ID,
 } from "../src/core/protocol/router";
+import {
+  estimateProofSize,
+  PROVE_BUFFER_THRESHOLD,
+} from "../src/core/protocol/routes/base-to-svm";
 import type {
   BridgeRoute,
   FeeEstimate,
@@ -232,4 +236,67 @@ describe("Quote validation logic", () => {
 
     expect(sourceGasCost).toBe(150000000000000n);
   });
+});
+
+describe("estimateProofSize", () => {
+  test("returns correct size for small payload", () => {
+    // 76 + 100 + 5*32 = 336
+    expect(estimateProofSize(100, 5)).toBe(336);
+  });
+
+  test("returns correct size for zero data", () => {
+    // 76 + 0 + 10*32 = 396
+    expect(estimateProofSize(0, 10)).toBe(396);
+  });
+
+  test("returns correct size for zero proof nodes", () => {
+    // 76 + 500 + 0 = 576
+    expect(estimateProofSize(500, 0)).toBe(576);
+  });
+
+  test("large data pushes over buffer threshold", () => {
+    // 76 + 1000 + 10*32 = 1396 > 900
+    expect(estimateProofSize(1000, 10)).toBeGreaterThan(PROVE_BUFFER_THRESHOLD);
+  });
+
+  test("many proof nodes push over buffer threshold", () => {
+    // 76 + 0 + 30*32 = 1036 > 900
+    expect(estimateProofSize(0, 30)).toBeGreaterThan(PROVE_BUFFER_THRESHOLD);
+  });
+
+  test("boundary case: exactly at threshold", () => {
+    // 76 + data + nodes*32 = 900
+    // with 10 nodes: data = 900 - 76 - 320 = 504
+    expect(estimateProofSize(504, 10)).toBe(PROVE_BUFFER_THRESHOLD);
+  });
+});
+
+describe("Prove buffer overhead calculation", () => {
+  test("small transfer does not trigger buffering", () => {
+    // Transfer-only: vec prefix(4) + transfer struct(128) = 132 bytes message data
+    // With 20 proof nodes: 76 + 132 + 20*32 = 848 <= 900
+    const transferOnlyDataSize = 4 + 128;
+    expect(estimateProofSize(transferOnlyDataSize, 20)).toBeLessThanOrEqual(
+      PROVE_BUFFER_THRESHOLD,
+    );
+  });
+
+  test("transfer with many instructions triggers buffering", () => {
+    // Transfer + 5 instructions, each with 3 accounts and 100 bytes of data:
+    // vec prefix(4) + transfer struct(128) + 5 * (32 + 4 + 3*34 + 4 + 100) = 4 + 128 + 5*242 = 1342
+    // With 20 proof nodes: 76 + 1342 + 640 = 2058 > 900
+    const perIx = 32 + 4 + 3 * 34 + 4 + 100;
+    const dataSize = 4 + 128 + 5 * perIx;
+    expect(estimateProofSize(dataSize, 20)).toBeGreaterThan(PROVE_BUFFER_THRESHOLD);
+  });
+
+  test("simple call with 1 instruction stays under threshold", () => {
+    // Call with 1 instruction, 2 accounts, 32 bytes data:
+    // vec prefix(4) + 1 * (32 + 4 + 2*34 + 4 + 32) = 4 + 140 = 144
+    // With 20 proof nodes: 76 + 144 + 640 = 860 <= 900
+    const perIx = 32 + 4 + 2 * 34 + 4 + 32;
+    const dataSize = 4 + perIx;
+    expect(estimateProofSize(dataSize, 20)).toBeLessThanOrEqual(PROVE_BUFFER_THRESHOLD);
+  });
+
 });

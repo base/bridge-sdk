@@ -19,6 +19,7 @@ import {
 } from "../../errors";
 import { pollingMonitor } from "../../monitor/polling";
 import type {
+  BridgeAction,
   BridgeContext,
   BridgeOperation,
   BridgeRequest,
@@ -78,13 +79,55 @@ const MIN_COMPUTE_FEE_LAMPORTS = 5_000n;
 const BASE_EXECUTE_FEE_LAMPORTS = 10_000n;
 
 /** Max instruction data bytes before falling back to the buffered prove path. */
-const PROVE_BUFFER_THRESHOLD = 900;
+export const PROVE_BUFFER_THRESHOLD = 900;
 /** Max data bytes per appendToProveBufferData transaction. */
 const PROVE_DATA_CHUNK_SIZE = 900;
 /** Max proof nodes per appendToProveBufferProof transaction. */
 const PROVE_PROOF_CHUNK_SIZE = 25;
 /** Fixed-overhead bytes in the proveMessage instruction (discriminator + nonce + sender + length prefixes + messageHash). */
 const PROVE_FIXED_OVERHEAD = 76;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prove buffer overhead estimation constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Conservative default for MMR proof node count.
+ * 20 nodes covers MMR trees with up to ~1M messages.
+ * Actual depth is log2(messageCount); this is a safe upper bound
+ * that avoids an extra RPC call to the bridge contract.
+ */
+const DEFAULT_PROOF_NODE_COUNT = 20;
+
+/**
+ * Approximate overhead for transfer struct encoding in message data.
+ * Covers: localToken (32) + remoteToken (32) + to (32) + amount (32).
+ */
+const TRANSFER_STRUCT_OVERHEAD = 128;
+
+/** Solana rent-exempt cost per byte: (128 + accountSize) * RENT_PER_BYTE lamports. */
+const SOLANA_RENT_LAMPORTS_PER_BYTE = 6_960n;
+/** Base account overhead Solana charges for rent-exempt calculations. */
+const SOLANA_RENT_BASE_OVERHEAD = 128n;
+/** Prove buffer account header: discriminator(8) + owner(32) + vec length prefixes(8). */
+const PROVE_BUFFER_ACCOUNT_HEADER = 48;
+
+/**
+ * Estimate the serialized proof payload size in bytes.
+ *
+ * The proof payload sent to the proveMessage instruction is:
+ *   PROVE_FIXED_OVERHEAD + messageDataBytes + proofNodes * 32
+ *
+ * @param messageDataBytes - Byte length of the serialized message data
+ * @param proofNodes       - Number of MMR proof nodes
+ * @returns The estimated proof payload size in bytes
+ */
+export function estimateProofSize(
+  messageDataBytes: number,
+  proofNodes: number,
+): number {
+  return PROVE_FIXED_OVERHEAD + messageDataBytes + proofNodes * 32;
+}
 
 /**
  * Base -> SVM route adapter (Base is always the EVM side).
@@ -171,8 +214,10 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       );
     }
 
+    const { fee: proveFee, buffered: proveBufferingRequired } =
+      this.estimateProveFee(req.action);
+
     // Fetch gas price and estimate execute fee in parallel (independent RPC calls)
-    const proveFee = SOLANA_BASE_TX_FEE + SOLANA_PROVE_COMPUTE_LAMPORTS;
     const [gasPrice, executeFee] = await Promise.all([
       this.evm.publicClient.getGasPrice(),
       this.estimateExecuteFee(req, warnings),
@@ -184,10 +229,11 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     // - Base finality: ~2 seconds
     // - Proof availability: depends on Solana bridge state updates
     // - Prove + Execute: ~1-2 seconds each on Solana
+    // - Buffered prove adds ~30s for multi-tx chunking
     // Total: ~1-5 minutes depending on bridge state sync
     const estimatedTimeMs = {
-      min: 60_000, // 1 minute optimistic
-      max: 300_000, // 5 minutes conservative
+      min: proveBufferingRequired ? 90_000 : 60_000,
+      max: proveBufferingRequired ? 360_000 : 300_000,
     };
 
     const quote: Quote = {
@@ -200,10 +246,11 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
         destination: {
           amount: destinationFee,
           token: "SOL",
-          note: "estimate varies based on instruction complexity",
+          note: `estimate varies based on instruction complexity${proveBufferingRequired ? "; includes recoverable buffer rent" : ""}`,
         },
       },
       estimatedTimeMs,
+      proveBufferingRequired,
     };
 
     // Note: No auto-relay for Base -> SVM, so no relay fee
@@ -259,16 +306,19 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
    * Estimate Solana execute transaction fee by simulating the instructions.
    * Falls back to heuristic estimation if simulation fails.
    */
+  private extractSolanaInstructions(
+    call: BridgeAction["call"],
+  ): SolanaInstruction[] {
+    return call && isSolanaDestinationCall(call)
+      ? call.call.instructions
+      : [];
+  }
+
   private async estimateExecuteFee(
     req: QuoteRequest,
     warnings: string[],
   ): Promise<bigint> {
-    // Extract instructions from the request
-    const destCall = req.action.call;
-    const instructions: SolanaInstruction[] =
-      destCall && isSolanaDestinationCall(destCall)
-        ? destCall.call.instructions
-        : [];
+    const instructions = this.extractSolanaInstructions(req.action.call);
 
     if (instructions.length === 0) {
       // No custom instructions, just the bridge execute overhead
@@ -303,6 +353,81 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
       SOLANA_BASE_TX_FEE +
       BigInt(instructions.length) * FALLBACK_LAMPORTS_PER_INSTRUCTION
     );
+  }
+
+  /**
+   * Estimate the byte length of the serialized message data from a BridgeAction.
+   *
+   * At quote time we don't have the actual on-chain message, so we estimate
+   * based on the instruction structure in the request. This uses the same
+   * Borsh layout as the Codama-generated Ix encoder:
+   *   - 4 bytes: instructions vec length prefix
+   *   - Per instruction:
+   *     - 32 bytes: programId
+   *     - 4 bytes: accounts vec length prefix
+   *     - N * 34 bytes: accounts (32 pubkey + 1 isWritable + 1 isSigner)
+   *     - 4 bytes: data vec length prefix
+   *     - M bytes: instruction data
+   *   - For transfers: ~128 bytes for the transfer struct
+   */
+  private estimateMessageDataSize(action: BridgeAction): number {
+    let size = 4; // vec length prefix
+
+    const instructions = this.extractSolanaInstructions(action.call);
+
+    for (const ix of instructions) {
+      size += 32 + 4 + ix.accounts.length * 34 + 4;
+      size +=
+        ix.data instanceof Uint8Array
+          ? ix.data.length
+          : (ix.data.length - 2) / 2; // hex string without "0x" prefix
+    }
+
+    if (action.kind === "transfer") {
+      size += TRANSFER_STRUCT_OVERHEAD;
+    }
+
+    return size;
+  }
+
+  /**
+   * Estimate the prove step fee, accounting for prove buffer overhead
+   * when the payload exceeds the single-transaction threshold.
+   *
+   * @returns fee: total lamports for all prove-related transactions,
+   *          buffered: whether the buffered path will be used
+   */
+  private estimateProveFee(action: BridgeAction): {
+    fee: bigint;
+    buffered: boolean;
+  } {
+    const messageDataBytes = this.estimateMessageDataSize(action);
+    const proofNodes = DEFAULT_PROOF_NODE_COUNT;
+    const proofPayloadSize = estimateProofSize(messageDataBytes, proofNodes);
+
+    const perTxFee = SOLANA_BASE_TX_FEE + SOLANA_PROVE_COMPUTE_LAMPORTS;
+
+    if (proofPayloadSize <= PROVE_BUFFER_THRESHOLD) {
+      return { fee: perTxFee, buffered: false };
+    }
+
+    const dataChunkTxs = Math.ceil(messageDataBytes / PROVE_DATA_CHUNK_SIZE);
+    const proofChunkTxs = Math.ceil(proofNodes / PROVE_PROOF_CHUNK_SIZE);
+    const totalTxs = 2 + dataChunkTxs + proofChunkTxs; // init + chunks + prove
+
+    const txFees = BigInt(totalTxs) * perTxFee;
+
+    // Buffer rent is temporary (recoverable after prove completes), but needed upfront
+    const bufferAccountSize =
+      PROVE_BUFFER_ACCOUNT_HEADER + messageDataBytes + proofNodes * 32;
+    const bufferRent =
+      (SOLANA_RENT_BASE_OVERHEAD + BigInt(bufferAccountSize)) *
+      SOLANA_RENT_LAMPORTS_PER_BYTE;
+
+    return {
+      fee: txFees + bufferRent,
+      buffered: true,
+    };
   }
 
   /**
@@ -544,8 +669,10 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
     );
 
     const estimatedDataLen = (event.message.data.length - 2) / 2;
-    const proofPayloadSize =
-      PROVE_FIXED_OVERHEAD + estimatedDataLen + rawProof.length * 32;
+    const proofPayloadSize = estimateProofSize(
+      estimatedDataLen,
+      rawProof.length,
+    );
 
     if (proofPayloadSize > PROVE_BUFFER_THRESHOLD) {
       const dataBytes = toBytes(event.message.data);

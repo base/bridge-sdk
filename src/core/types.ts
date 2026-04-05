@@ -251,6 +251,8 @@ export interface Quote {
   };
   /** Warnings about the quote (e.g., high fees, low liquidity) */
   warnings?: string[];
+  /** Whether prove buffering is required for this operation (large payload). */
+  proveBufferingRequired?: boolean;
 }
 
 export interface ProveOptions {
