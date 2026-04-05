@@ -151,6 +151,7 @@ See `examples/` for working scripts against the v1 `BridgeClient` API:
 - `examples/transfer.ts`: Solana → EVM transfer
 - `examples/call.ts`: Solana → EVM call
 - `examples/evmToSolanaTokenTransfer.ts`: EVM → Solana token transfer (prove + execute)
+- `examples/baseToSolanaCall.ts`: Base → Solana call
 
 ## Contributing
 
