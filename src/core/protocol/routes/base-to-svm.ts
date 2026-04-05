@@ -309,9 +309,7 @@ export class BaseToSvmRouteAdapter implements RouteAdapter {
   private extractSolanaInstructions(
     call: BridgeAction["call"],
   ): SolanaInstruction[] {
-    return call && isSolanaDestinationCall(call)
-      ? call.call.instructions
-      : [];
+    return call && isSolanaDestinationCall(call) ? call.call.instructions : [];
   }
 
   private async estimateExecuteFee(

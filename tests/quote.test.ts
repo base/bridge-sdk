@@ -287,7 +287,9 @@ describe("Prove buffer overhead calculation", () => {
     // With 20 proof nodes: 76 + 1342 + 640 = 2058 > 900
     const perIx = 32 + 4 + 3 * 34 + 4 + 100;
     const dataSize = 4 + 128 + 5 * perIx;
-    expect(estimateProofSize(dataSize, 20)).toBeGreaterThan(PROVE_BUFFER_THRESHOLD);
+    expect(estimateProofSize(dataSize, 20)).toBeGreaterThan(
+      PROVE_BUFFER_THRESHOLD,
+    );
   });
 
   test("simple call with 1 instruction stays under threshold", () => {
@@ -296,7 +298,8 @@ describe("Prove buffer overhead calculation", () => {
     // With 20 proof nodes: 76 + 144 + 640 = 860 <= 900
     const perIx = 32 + 4 + 2 * 34 + 4 + 32;
     const dataSize = 4 + perIx;
-    expect(estimateProofSize(dataSize, 20)).toBeLessThanOrEqual(PROVE_BUFFER_THRESHOLD);
+    expect(estimateProofSize(dataSize, 20)).toBeLessThanOrEqual(
+      PROVE_BUFFER_THRESHOLD,
+    );
   });
-
 });
