@@ -351,7 +351,7 @@ export class BaseEngine {
       );
     }
 
-    const event = msgInitEvents[0]!;
+    const [event] = msgInitEvents;
     this.logger.info(
       `baseEngine.generateProof: decoded MessageInitiated event, nonce=${event.message.nonce}`,
     );
