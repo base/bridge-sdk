@@ -610,7 +610,6 @@ export class SvmToBaseRouteAdapter implements RouteAdapter {
 
     const bufferableData = this.getBufferableCallData(evmCall);
     if (bufferableData && evmCall) {
-      // evmCall is guaranteed non-null when bufferableData is non-null
       return this.initiateWithBuffer(
         req,
         evmCall,
