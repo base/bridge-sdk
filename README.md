@@ -75,9 +75,9 @@ main().catch(console.error);
 
 ## Network Configuration
 
-The SDK ships with hardcoded **mainnet** deployment addresses. To target
-additional networks (e.g. Solana devnet, Base Sepolia) or use custom contract
-deployments, pass `deployments` overrides to `createBridgeClient()`.
+The SDK ships with built-in deployment addresses for **mainnet and testnet/devnet**
+(`solana:mainnet`, `solana:devnet`, `eip155:8453`, `eip155:84532`). To use custom
+contract deployments, pass `deployments` overrides to `createBridgeClient()`.
 
 ### Default deployment addresses
 
@@ -89,8 +89,8 @@ deployments, pass `deployments` overrides to `createBridgeClient()`.
 
 ### Devnet / testnet configuration example
 
-The SDK exports `solanaDevnet` and `baseSepolia` chain objects you can use
-alongside your own deployment addresses:
+The SDK exports `solanaDevnet` and `baseSepolia` chain objects, and those chain IDs
+already have bundled defaults. You can still provide overrides when needed:
 
 ```ts
 import { address } from "@solana/kit";
@@ -134,7 +134,7 @@ const client = createBridgeClient({
 
 ### Merge behavior
 
-Overrides are **merged** with the built-in mainnet defaults, not replaced:
+Overrides are **merged** with the built-in defaults, not replaced:
 
 - **Existing chain IDs** — individual fields are overridden; unspecified fields
   keep their defaults.
@@ -142,7 +142,7 @@ Overrides are **merged** with the built-in mainnet defaults, not replaced:
   provided or the entry is ignored.
 
 This means you can override a single mainnet address without losing the others,
-or add devnet/testnet entries while keeping the mainnet defaults intact.
+or add new entries while keeping the bundled defaults intact.
 
 ## Examples
 
