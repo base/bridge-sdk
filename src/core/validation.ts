@@ -140,7 +140,7 @@ export function validateEvmCallType(call: EvmCall): void {
 
   if (
     (call.ty === EvmCallType.Create || call.ty === EvmCallType.Create2) &&
-    call.to !== zeroAddress
+    call.to.toLowerCase() !== zeroAddress.toLowerCase()
   ) {
     throw new BridgeValidationError(
       `${EvmCallType[call.ty]} requires the \`to\` address to be the zero address`,
