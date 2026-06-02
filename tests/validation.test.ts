@@ -601,7 +601,7 @@ describe("validateEvmCallType", () => {
     test("accepts Create with uppercase zero address", () => {
       expect(() =>
         validateEvmCallType({
-          to: "0x0000000000000000000000000000000000000000" as `0x${string}`,
+          to: "0X0000000000000000000000000000000000000000" as `0x${string}`,
           value: 0n,
           data: "0x",
           ty: EvmCallType.Create,
