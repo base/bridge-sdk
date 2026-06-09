@@ -15,7 +15,10 @@ export function isAllowedTransition(
     case "Unknown":
       return to === "Initiated";
     case "Initiated":
-      return to === "Executable";
+      // Prove and execute can both land within a single poll interval, so the
+      // monitor may observe Initiated then Executing/Executed without ever
+      // seeing Executable. Allow those forward skips.
+      return to === "Executable" || to === "Executing" || to === "Executed";
     case "Executable":
       return to === "Executing" || to === "Executed";
     case "Executing":
